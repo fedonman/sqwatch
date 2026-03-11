@@ -91,7 +91,7 @@ impl Dashboard {
             script: ScriptPane::new(),
             notice: String::new(),
             notice_expires: None,
-            refresh_secs: 10,
+            refresh_secs: 1,
             known_partitions,
             known_qos,
             known_states,
@@ -280,9 +280,7 @@ impl Dashboard {
         render_titlebar(
             frame,
             area,
-            &info,
-            self.refreshed_at.elapsed(),
-            self.refresh_secs,
+            &info
         );
     }
 
@@ -517,16 +515,6 @@ impl Dashboard {
                         }
                     }
                     FieldAction::Noop => {}
-                }
-            }
-
-            (_, KeyCode::Char('r'))
-                if !self.search_dlg.visible
-                    && !self.script.visible
-                    && !self.field_sel.visible =>
-            {
-                if let Err(e) = self.reload_jobs() {
-                    self.flash(format!("Failed to refresh: {}", e), 3);
                 }
             }
 

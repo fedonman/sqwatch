@@ -5,7 +5,6 @@ use ratatui::{
     widgets::{Block, Borders, Paragraph},
     Frame,
 };
-use std::time::Duration;
 
 pub fn build_frame(frame: &mut Frame) -> Vec<Rect> {
     let regions = Layout::default()
@@ -23,9 +22,7 @@ pub fn build_frame(frame: &mut Frame) -> Vec<Rect> {
 pub fn render_titlebar(
     frame: &mut Frame,
     area: Rect,
-    info: &str,
-    age: Duration,
-    interval: u64,
+    info: &str
 ) {
     let halves = Layout::default()
         .direction(Direction::Horizontal)
@@ -41,14 +38,7 @@ pub fn render_titlebar(
 
     frame.render_widget(brand, halves[0]);
 
-    let detail = format!(
-        "{} | Refresh: {}s ago (auto: {}s)",
-        info,
-        age.as_secs(),
-        interval
-    );
-
-    let status_bar = Paragraph::new(detail)
+    let status_bar = Paragraph::new(info)
         .block(Block::default().borders(Borders::ALL))
         .style(Style::default());
 
@@ -66,7 +56,6 @@ pub fn render_statusbar(frame: &mut Frame, area: Rect, counts: (usize, usize, us
         ("c", "Columns"),
         ("v", "Log"),
         ("a", "SelectAll"),
-        ("r", "Refresh"),
         ("x", "Cancel"),
     ];
 
