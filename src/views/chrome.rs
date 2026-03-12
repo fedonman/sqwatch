@@ -22,19 +22,32 @@ pub fn build_frame(frame: &mut Frame) -> Vec<Rect> {
 pub fn render_titlebar(
     frame: &mut Frame,
     area: Rect,
-    info: &str,
+    filters: &str,
     username: &str,
+    flash: Option<&str>,
 ) {
     let brand_width = "sqwatch - SLURM Queue Watcher".len() as u16 + 2;
     let user_label = "User: ";
     let user_width = user_label.len() as u16 + username.len() as u16 + 2; // +2 for borders
-    let sections = Layout::default()
-        .direction(Direction::Horizontal)
-        .constraints([
+
+    let constraints = if flash.is_some() {
+        vec![
+            Constraint::Length(brand_width),
+            Constraint::Length(user_width),
+            Constraint::Percentage(50),
+            Constraint::Percentage(50),
+        ]
+    } else {
+        vec![
             Constraint::Length(brand_width),
             Constraint::Length(user_width),
             Constraint::Min(0),
-        ])
+        ]
+    };
+
+    let sections = Layout::default()
+        .direction(Direction::Horizontal)
+        .constraints(constraints)
         .split(area);
 
     let brand = Paragraph::new(Text::from(vec![Line::from(vec![
@@ -54,13 +67,22 @@ pub fn render_titlebar(
 
     frame.render_widget(user_box, sections[1]);
 
-    let status_bar = Paragraph::new(Line::from(vec![
+    let filter_bar = Paragraph::new(Line::from(vec![
         Span::styled("Filters: ", Style::default().fg(Color::White)),
-        Span::raw(info),
+        Span::raw(filters),
     ]))
     .block(Block::default().borders(Borders::ALL));
 
-    frame.render_widget(status_bar, sections[2]);
+    frame.render_widget(filter_bar, sections[2]);
+
+    if let Some(msg) = flash {
+        let flash_bar = Paragraph::new(Line::from(vec![
+            Span::styled(msg, Style::default().fg(Color::Yellow)),
+        ]))
+        .block(Block::default().borders(Borders::ALL));
+
+        frame.render_widget(flash_bar, sections[3]);
+    }
 }
 
 pub fn render_statusbar(frame: &mut Frame, area: Rect, counts: (usize, usize, usize)) {

@@ -274,21 +274,24 @@ impl Dashboard {
     }
 
     fn draw_titlebar(&self, frame: &mut Frame, area: Rect) {
-        let info = if let Some(deadline) = self.notice_expires {
+        let filters = self.filter_summary();
+
+        let flash = if let Some(deadline) = self.notice_expires {
             if Instant::now() < deadline {
-                self.notice.clone()
+                Some(self.notice.as_str())
             } else {
-                self.filter_summary()
+                None
             }
         } else {
-            self.filter_summary()
+            None
         };
 
         render_titlebar(
             frame,
             area,
-            &info,
+            &filters,
             &self.login_user,
+            flash,
         );
     }
 

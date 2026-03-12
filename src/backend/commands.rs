@@ -42,7 +42,16 @@ pub async fn cancel_jobs(job_ids: Vec<String>) -> Result<()> {
 
     let batch_limit = 200;
     for batch in job_ids.chunks(batch_limit) {
-        let _ = run_cmd("scancel", batch.to_vec()).await?;
+        let output = run_cmd("scancel", batch.to_vec()).await?;
+        if !output.status.success() {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            let msg = if stderr.trim().is_empty() {
+                format!("scancel exited with code {}", output.status)
+            } else {
+                format!("scancel: {}", stderr.trim())
+            };
+            color_eyre::eyre::bail!(msg);
+        }
     }
 
     Ok(())
