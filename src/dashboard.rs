@@ -134,6 +134,29 @@ impl Dashboard {
         let mut stats = Vec::new();
         let total = jobs.len();
 
+        if let Some(ref pat) = self.params.user {
+            if !pat.is_empty() {
+                match regex::Regex::new(pat) {
+                    Ok(re) => {
+                        let before = jobs.len();
+                        jobs.retain(|j| re.is_match(&j.user));
+                        let after = jobs.len();
+                        if before != after && before > 0 {
+                            stats.push(format!(
+                                "user: {}/{} ({:.1}%)",
+                                after,
+                                before,
+                                (after as f64 / before as f64) * 100.0
+                            ));
+                        }
+                    }
+                    Err(e) => {
+                        self.flash(format!("Invalid user regex pattern: {}", e), 3);
+                    }
+                }
+            }
+        }
+
         if let Some(ref pat) = self.params.name_pattern {
             if !pat.is_empty() {
                 match regex::Regex::new(pat) {
@@ -561,7 +584,7 @@ impl Dashboard {
         let mut parts = Vec::new();
 
         if let Some(ref u) = self.params.user {
-            parts.push(format!("user={}", u));
+            parts.push(format!("user_regex={}", u));
         }
         if !self.params.statuses.is_empty() {
             let s = self

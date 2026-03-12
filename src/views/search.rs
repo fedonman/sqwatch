@@ -21,6 +21,7 @@ pub struct SearchDialog {
     pub node_cursor: ListState,
     pub name_pattern: String,
     pub name_ok: Option<bool>,
+    pub user_ok: Option<bool>,
     pub visible: bool,
 }
 
@@ -56,6 +57,7 @@ impl SearchDialog {
             node_cursor: nc,
             name_pattern: String::new(),
             name_ok: None,
+            user_ok: None,
             visible: false,
         }
     }
@@ -64,11 +66,24 @@ impl SearchDialog {
         self.user_input = params.user.clone().unwrap_or_default();
         self.name_pattern = params.name_pattern.clone().unwrap_or_default();
 
+        self.user_ok = if self.user_input.is_empty() {
+            None
+        } else {
+            Some(Regex::new(&self.user_input).is_ok())
+        };
         self.name_ok = if self.name_pattern.is_empty() {
             None
         } else {
             Some(Regex::new(&self.name_pattern).is_ok())
         };
+    }
+
+    fn check_user_regex(&mut self) {
+        if self.user_input.is_empty() {
+            self.user_ok = None;
+        } else {
+            self.user_ok = Some(Regex::new(&self.user_input).is_ok());
+        }
     }
 
     fn check_name_regex(&mut self) {
@@ -142,14 +157,20 @@ impl SearchDialog {
             .split(area);
 
         // Username
+        let u_title = match self.user_ok {
+            Some(true) => "Username (regex) \u{2713}",
+            Some(false) => "Username (regex) \u{2717} Invalid",
+            None => "Username (regex)",
+        };
+        let u_style = match (self.focus == SearchFocus::Username, self.user_ok) {
+            (true, _) => Style::default().fg(Color::Cyan),
+            (_, Some(false)) => Style::default().fg(Color::Red),
+            _ => Style::default(),
+        };
         let u_block = Block::default()
-            .title("Username")
+            .title(u_title)
             .borders(Borders::ALL)
-            .style(if self.focus == SearchFocus::Username {
-                Style::default().fg(Color::Cyan)
-            } else {
-                Style::default()
-            });
+            .style(u_style);
         frame.render_widget(
             Paragraph::new(self.user_input.clone()).block(u_block),
             cells[0],
@@ -354,6 +375,7 @@ impl SearchDialog {
         match key.code {
             KeyCode::Char('r') => {
                 self.user_input.clear();
+                self.user_ok = None;
                 self.name_pattern.clear();
                 self.name_ok = None;
                 params.user = None;
@@ -515,11 +537,12 @@ impl SearchDialog {
             KeyCode::Enter => {
                 match self.focus {
                     SearchFocus::Username => {
-                        params.user = if self.user_input.is_empty() {
-                            None
-                        } else {
-                            Some(self.user_input.clone())
-                        };
+                        if self.user_input.is_empty() {
+                            params.user = None;
+                            self.user_ok = None;
+                        } else if self.user_ok == Some(true) {
+                            params.user = Some(self.user_input.clone());
+                        }
                     }
                     SearchFocus::NamePattern => {
                         if self.name_pattern.is_empty() {
@@ -536,7 +559,10 @@ impl SearchDialog {
             }
             KeyCode::Char(ch) => {
                 match self.focus {
-                    SearchFocus::Username => self.user_input.push(ch),
+                    SearchFocus::Username => {
+                        self.user_input.push(ch);
+                        self.check_user_regex();
+                    }
                     SearchFocus::NamePattern => {
                         self.name_pattern.push(ch);
                         self.check_name_regex();
@@ -549,6 +575,7 @@ impl SearchDialog {
                 match self.focus {
                     SearchFocus::Username => {
                         self.user_input.pop();
+                        self.check_user_regex();
                     }
                     SearchFocus::NamePattern => {
                         self.name_pattern.pop();

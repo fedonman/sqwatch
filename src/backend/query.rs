@@ -51,10 +51,8 @@ impl QueryParams {
     pub fn build_args(&self) -> Vec<String> {
         let mut args = Vec::new();
 
-        if let Some(ref u) = self.user {
-            args.push("--user".into());
-            args.push(u.clone());
-        }
+        // user filtering is done client-side via regex
+        args.push("--all".into());
 
         if !self.statuses.is_empty() {
             let joined = self
