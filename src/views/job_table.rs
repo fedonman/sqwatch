@@ -29,6 +29,7 @@ impl JobTable {
 
     pub fn set_jobs(&mut self, data: Vec<Job>) {
         self.jobs = data;
+        self.marked.clear();
 
         if let Some(sel) = self.tbl_state.selected() {
             if sel >= self.jobs.len() {

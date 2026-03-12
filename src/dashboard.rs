@@ -668,11 +668,17 @@ impl Dashboard {
     fn do_cancel(&mut self) {
         let ids = self.table.marked_job_ids();
         let count = ids.len();
-        let _ = self.rt.block_on(cancel_jobs(ids));
-        if let Err(e) = self.reload_jobs() {
-            self.flash(format!("Failed to refresh after cancel: {}", e), 3);
-        } else {
-            self.flash(format!("Cancelled {} job(s)", count), 3);
+        match self.rt.block_on(cancel_jobs(ids)) {
+            Ok(_) => {
+                if let Err(e) = self.reload_jobs() {
+                    self.flash(format!("Failed to refresh after cancel: {}", e), 3);
+                } else {
+                    self.flash(format!("Cancelled {} job(s)", count), 3);
+                }
+            }
+            Err(e) => {
+                self.flash(format!("Cancel failed: {}", e), 5);
+            }
         }
     }
 }
