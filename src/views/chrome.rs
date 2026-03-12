@@ -30,24 +30,14 @@ pub fn render_titlebar(
     let user_label = "User: ";
     let user_width = user_label.len() as u16 + username.len() as u16 + 2; // +2 for borders
 
-    let constraints = if flash.is_some() {
-        vec![
-            Constraint::Length(brand_width),
-            Constraint::Length(user_width),
-            Constraint::Percentage(50),
-            Constraint::Percentage(50),
-        ]
-    } else {
-        vec![
-            Constraint::Length(brand_width),
-            Constraint::Length(user_width),
-            Constraint::Min(0),
-        ]
-    };
-
     let sections = Layout::default()
         .direction(Direction::Horizontal)
-        .constraints(constraints)
+        .constraints([
+            Constraint::Length(brand_width),
+            Constraint::Length(user_width),
+            Constraint::Percentage(50),
+            Constraint::Percentage(50),
+        ])
         .split(area);
 
     let brand = Paragraph::new(Text::from(vec![Line::from(vec![
@@ -75,14 +65,13 @@ pub fn render_titlebar(
 
     frame.render_widget(filter_bar, sections[2]);
 
-    if let Some(msg) = flash {
-        let flash_bar = Paragraph::new(Line::from(vec![
-            Span::styled(msg, Style::default().fg(Color::Yellow)),
-        ]))
-        .block(Block::default().borders(Borders::ALL));
+    let flash_content = flash.unwrap_or("");
+    let flash_bar = Paragraph::new(Line::from(vec![
+        Span::styled(flash_content, Style::default().fg(Color::Yellow)),
+    ]))
+    .block(Block::default().borders(Borders::ALL));
 
-        frame.render_widget(flash_bar, sections[3]);
-    }
+    frame.render_widget(flash_bar, sections[3]);
 }
 
 pub fn render_statusbar(frame: &mut Frame, area: Rect, counts: (usize, usize, usize)) {
