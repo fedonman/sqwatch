@@ -1,10 +1,10 @@
 use crossterm::event::KeyModifiers;
 use ratatui::{
+    Frame,
     layout::{Constraint, Direction, Layout, Rect},
     style::{Color, Modifier, Style},
     text::Line,
     widgets::{Block, Borders, Clear, List, ListItem, ListState, Paragraph},
-    Frame,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -78,24 +78,24 @@ impl JobField {
 
     pub fn width_hint(&self) -> Constraint {
         match self {
-            JobField::Id => Constraint::Length(10),
-            JobField::Name => Constraint::Percentage(20),
-            JobField::User => Constraint::Length(10),
-            JobField::State => Constraint::Length(12),
-            JobField::Partition => Constraint::Length(12),
-            JobField::QoS => Constraint::Length(10),
-            JobField::Nodes => Constraint::Length(7),
-            JobField::Node => Constraint::Percentage(12),
-            JobField::CPUs => Constraint::Length(6),
-            JobField::Time => Constraint::Length(12),
-            JobField::Memory => Constraint::Length(10),
-            JobField::Account => Constraint::Length(12),
-            JobField::Priority => Constraint::Length(10),
-            JobField::WorkDir => Constraint::Percentage(15),
-            JobField::SubmitTime => Constraint::Length(19),
-            JobField::StartTime => Constraint::Length(19),
-            JobField::EndTime => Constraint::Length(19),
-            JobField::PendReason => Constraint::Percentage(20),
+            JobField::Id => Constraint::Percentage(6),
+            JobField::Name => Constraint::Percentage(8),
+            JobField::User => Constraint::Percentage(8),
+            JobField::State => Constraint::Percentage(7),
+            JobField::Partition => Constraint::Percentage(7),
+            JobField::QoS => Constraint::Percentage(6),
+            JobField::Nodes => Constraint::Percentage(4),
+            JobField::Node => Constraint::Percentage(10),
+            JobField::CPUs => Constraint::Percentage(4),
+            JobField::Time => Constraint::Percentage(7),
+            JobField::Memory => Constraint::Percentage(6),
+            JobField::Account => Constraint::Percentage(7),
+            JobField::Priority => Constraint::Percentage(6),
+            JobField::WorkDir => Constraint::Percentage(18),
+            JobField::SubmitTime => Constraint::Percentage(10),
+            JobField::StartTime => Constraint::Percentage(10),
+            JobField::EndTime => Constraint::Percentage(10),
+            JobField::PendReason => Constraint::Percentage(15),
         }
     }
 
@@ -126,14 +126,14 @@ impl JobField {
         vec![
             JobField::Id,
             JobField::Name,
-            JobField::User,
             JobField::State,
             JobField::Time,
+            JobField::User,
             JobField::Node,
+            JobField::Partition,
             JobField::CPUs,
             JobField::Memory,
-            JobField::Partition,
-            JobField::QoS,
+            JobField::WorkDir,
         ]
     }
 }
@@ -171,9 +171,6 @@ pub enum FieldFocus {
     Pool,
     Active,
     SortList,
-    BtnSave,
-    BtnApply,
-    BtnCancel,
 }
 
 pub struct FieldSelector {
@@ -305,9 +302,7 @@ impl FieldSelector {
         let sort_items: Vec<ListItem> = self
             .sort_list
             .iter()
-            .map(|of| {
-                ListItem::new(format!("{} {}", of.field.heading(), of.direction.arrow()))
-            })
+            .map(|of| ListItem::new(format!("{} {}", of.field.heading(), of.direction.arrow())))
             .collect();
 
         let sort_list_widget = List::new(sort_items)
@@ -323,15 +318,14 @@ impl FieldSelector {
                 "\u{2191}/\u{2193}: Navigate | \u{2190}/\u{2192}: Switch lists | Enter: Add to Selected"
             }
             FieldFocus::Active => {
-                "\u{2191}/\u{2193}: Navigate | \u{2190}/\u{2192}: Switch lists | Enter: Add to Sort | Del: Remove | Ctrl+\u{2191}/\u{2193}: Move up/down"
+                "\u{2191}/\u{2193}: Navigate | \u{2190}/\u{2192}: Switch lists | Enter: Add to Sort | Del: Remove | Shift+\u{2191}/\u{2193}: Move"
             }
             FieldFocus::SortList => {
-                "\u{2191}/\u{2193}: Navigate | \u{2190}/\u{2192}: Switch lists | Enter: Toggle order | Del: Remove | Ctrl+\u{2191}/\u{2193}: Move up/down"
+                "\u{2191}/\u{2193}: Navigate | \u{2190}/\u{2192}: Switch lists | Enter: Toggle order | Del: Remove | Shift+\u{2191}/\u{2193}: Move"
             }
-            _ => "",
         };
 
-        let full = format!("{} | Ctrl+a: Apply | Esc: Close", hint);
+        let full = format!("{} | r: Reset | Ctrl+S: Save | Esc: Close", hint);
         let widget = Paragraph::new(full)
             .style(Style::default().fg(Color::Gray))
             .block(Block::default().borders(Borders::ALL));
@@ -346,6 +340,13 @@ impl FieldSelector {
             KeyCode::Tab => {
                 self.rotate_focus();
                 return FieldAction::Noop;
+            }
+            KeyCode::Char('s') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+                return FieldAction::Save;
+            }
+            KeyCode::Char('r') => {
+                self.reset_to_defaults();
+                return FieldAction::Confirm;
             }
             KeyCode::Left => match self.focus {
                 FieldFocus::Active => {
@@ -373,9 +374,6 @@ impl FieldSelector {
                 }
                 _ => {}
             },
-            KeyCode::Char('a') if key.modifiers.contains(KeyModifiers::CONTROL) => {
-                return FieldAction::Confirm;
-            }
             _ => {}
         }
 
@@ -383,7 +381,6 @@ impl FieldSelector {
             FieldFocus::Pool => self.on_pool_key(key),
             FieldFocus::Active => self.on_active_key(key),
             FieldFocus::SortList => self.on_sort_key(key),
-            _ => self.on_button_key(key),
         }
     }
 
@@ -392,37 +389,38 @@ impl FieldSelector {
 
         match key.code {
             KeyCode::Up => {
-                if let Some(cur) = self.pool_state.selected() {
-                    if cur > 0 {
-                        self.pool_state.select(Some(cur - 1));
-                    }
+                if let Some(cur) = self.pool_state.selected()
+                    && cur > 0
+                {
+                    self.pool_state.select(Some(cur - 1));
                 }
                 FieldAction::Noop
             }
             KeyCode::Down => {
-                if let Some(cur) = self.pool_state.selected() {
-                    if cur < self.pool.len().saturating_sub(1) {
-                        self.pool_state.select(Some(cur + 1));
-                    }
+                if let Some(cur) = self.pool_state.selected()
+                    && cur < self.pool.len().saturating_sub(1)
+                {
+                    self.pool_state.select(Some(cur + 1));
                 }
                 FieldAction::Noop
             }
             KeyCode::Enter => {
-                if let Some(cur) = self.pool_state.selected() {
-                    if !self.pool.is_empty() && cur < self.pool.len() {
-                        let field = self.pool.remove(cur);
-                        self.active.push(field);
+                if let Some(cur) = self.pool_state.selected()
+                    && !self.pool.is_empty()
+                    && cur < self.pool.len()
+                {
+                    let field = self.pool.remove(cur);
+                    self.active.push(field);
 
-                        if self.pool.is_empty() {
-                            self.pool_state.select(None);
-                        } else if cur >= self.pool.len() {
-                            self.pool_state.select(Some(self.pool.len() - 1));
-                        }
-
-                        self.active_state.select(Some(self.active.len() - 1));
+                    if self.pool.is_empty() {
+                        self.pool_state.select(None);
+                    } else if cur >= self.pool.len() {
+                        self.pool_state.select(Some(self.pool.len() - 1));
                     }
+
+                    self.active_state.select(Some(self.active.len() - 1));
                 }
-                FieldAction::Noop
+                FieldAction::Confirm
             }
             _ => FieldAction::Noop,
         }
@@ -434,59 +432,65 @@ impl FieldSelector {
 
         match key.code {
             KeyCode::Up => {
-                if let Some(cur) = self.active_state.selected() {
-                    if cur > 0 {
-                        if key.modifiers.contains(KeyModifiers::SHIFT) {
-                            self.active.swap(cur, cur - 1);
-                        }
+                if let Some(cur) = self.active_state.selected()
+                    && cur > 0
+                {
+                    if key.modifiers.contains(KeyModifiers::SHIFT) {
+                        self.active.swap(cur, cur - 1);
                         self.active_state.select(Some(cur - 1));
+                        return FieldAction::Confirm;
                     }
+                    self.active_state.select(Some(cur - 1));
                 }
                 FieldAction::Noop
             }
             KeyCode::Down => {
-                if let Some(cur) = self.active_state.selected() {
-                    if cur < self.active.len().saturating_sub(1) {
-                        if key.modifiers.contains(KeyModifiers::SHIFT) {
-                            self.active.swap(cur, cur + 1);
-                        }
+                if let Some(cur) = self.active_state.selected()
+                    && cur < self.active.len().saturating_sub(1)
+                {
+                    if key.modifiers.contains(KeyModifiers::SHIFT) {
+                        self.active.swap(cur, cur + 1);
                         self.active_state.select(Some(cur + 1));
+                        return FieldAction::Confirm;
                     }
+                    self.active_state.select(Some(cur + 1));
                 }
                 FieldAction::Noop
             }
             KeyCode::Enter => {
-                if let Some(cur) = self.active_state.selected() {
-                    if !self.active.is_empty() && cur < self.active.len() {
-                        let field = self.active[cur];
-                        let already_sorting = self.sort_list.iter().any(|of| of.field == field);
-                        if !already_sorting {
-                            self.sort_list.push(OrderedField {
-                                field,
-                                direction: Ordering::Asc,
-                            });
-                            self.sort_state.select(Some(self.sort_list.len() - 1));
-                        }
+                if let Some(cur) = self.active_state.selected()
+                    && !self.active.is_empty()
+                    && cur < self.active.len()
+                {
+                    let field = self.active[cur];
+                    let already_sorting = self.sort_list.iter().any(|of| of.field == field);
+                    if !already_sorting {
+                        self.sort_list.push(OrderedField {
+                            field,
+                            direction: Ordering::Asc,
+                        });
+                        self.sort_state.select(Some(self.sort_list.len() - 1));
                     }
                 }
-                FieldAction::Noop
+                FieldAction::Confirm
             }
             KeyCode::Delete | KeyCode::Backspace => {
-                if let Some(cur) = self.active_state.selected() {
-                    if !self.active.is_empty() && cur < self.active.len() {
-                        let removed = self.active.remove(cur);
-                        self.pool.push(removed);
-                        self.sort_list.retain(|of| of.field != removed);
+                if let Some(cur) = self.active_state.selected()
+                    && !self.active.is_empty()
+                    && cur < self.active.len()
+                {
+                    let removed = self.active.remove(cur);
+                    self.pool.push(removed);
+                    self.sort_list.retain(|of| of.field != removed);
 
-                        if self.active.is_empty() {
-                            self.active_state.select(None);
-                        } else if cur >= self.active.len() {
-                            self.active_state.select(Some(self.active.len() - 1));
-                        }
-                        self.pool_state.select(Some(self.pool.len() - 1));
+                    if self.active.is_empty() {
+                        self.active_state.select(None);
+                    } else if cur >= self.active.len() {
+                        self.active_state.select(Some(self.active.len() - 1));
                     }
+                    self.pool_state.select(Some(self.pool.len() - 1));
                 }
-                FieldAction::Noop
+                FieldAction::Confirm
             }
             _ => FieldAction::Noop,
         }
@@ -498,59 +502,53 @@ impl FieldSelector {
 
         match key.code {
             KeyCode::Up => {
-                if let Some(cur) = self.sort_state.selected() {
-                    if cur > 0 {
-                        if key.modifiers.contains(KeyModifiers::SHIFT) {
-                            self.sort_list.swap(cur, cur - 1);
-                        }
+                if let Some(cur) = self.sort_state.selected()
+                    && cur > 0
+                {
+                    if key.modifiers.contains(KeyModifiers::SHIFT) {
+                        self.sort_list.swap(cur, cur - 1);
                         self.sort_state.select(Some(cur - 1));
+                        return FieldAction::Confirm;
                     }
+                    self.sort_state.select(Some(cur - 1));
                 }
                 FieldAction::Noop
             }
             KeyCode::Down => {
-                if let Some(cur) = self.sort_state.selected() {
-                    if cur < self.sort_list.len().saturating_sub(1) {
-                        if key.modifiers.contains(KeyModifiers::SHIFT) {
-                            self.sort_list.swap(cur, cur + 1);
-                        }
+                if let Some(cur) = self.sort_state.selected()
+                    && cur < self.sort_list.len().saturating_sub(1)
+                {
+                    if key.modifiers.contains(KeyModifiers::SHIFT) {
+                        self.sort_list.swap(cur, cur + 1);
                         self.sort_state.select(Some(cur + 1));
+                        return FieldAction::Confirm;
                     }
+                    self.sort_state.select(Some(cur + 1));
                 }
                 FieldAction::Noop
             }
             KeyCode::Char(' ') | KeyCode::Enter => {
-                if let Some(cur) = self.sort_state.selected() {
-                    if cur < self.sort_list.len() {
-                        self.sort_list[cur].direction = self.sort_list[cur].direction.flip();
-                    }
+                if let Some(cur) = self.sort_state.selected()
+                    && cur < self.sort_list.len()
+                {
+                    self.sort_list[cur].direction = self.sort_list[cur].direction.flip();
                 }
-                FieldAction::Noop
+                FieldAction::Confirm
             }
             KeyCode::Delete | KeyCode::Backspace => {
-                if let Some(cur) = self.sort_state.selected() {
-                    if !self.sort_list.is_empty() && cur < self.sort_list.len() {
-                        self.sort_list.remove(cur);
-                        if self.sort_list.is_empty() {
-                            self.sort_state.select(None);
-                        } else if cur >= self.sort_list.len() {
-                            self.sort_state.select(Some(self.sort_list.len() - 1));
-                        }
+                if let Some(cur) = self.sort_state.selected()
+                    && !self.sort_list.is_empty()
+                    && cur < self.sort_list.len()
+                {
+                    self.sort_list.remove(cur);
+                    if self.sort_list.is_empty() {
+                        self.sort_state.select(None);
+                    } else if cur >= self.sort_list.len() {
+                        self.sort_state.select(Some(self.sort_list.len() - 1));
                     }
                 }
-                FieldAction::Noop
+                FieldAction::Confirm
             }
-            _ => FieldAction::Noop,
-        }
-    }
-
-    fn on_button_key(&mut self, key: crossterm::event::KeyEvent) -> FieldAction {
-        use crossterm::event::KeyCode;
-
-        match (self.focus, key.code) {
-            (FieldFocus::BtnSave, KeyCode::Enter) => FieldAction::PersistAndConfirm,
-            (FieldFocus::BtnApply, KeyCode::Enter) => FieldAction::Confirm,
-            (FieldFocus::BtnCancel, KeyCode::Enter) => FieldAction::Dismiss,
             _ => FieldAction::Noop,
         }
     }
@@ -559,12 +557,26 @@ impl FieldSelector {
         self.focus = match self.focus {
             FieldFocus::Pool => FieldFocus::Active,
             FieldFocus::Active => FieldFocus::SortList,
-            FieldFocus::SortList => FieldFocus::BtnSave,
-            FieldFocus::BtnSave => FieldFocus::BtnApply,
-            FieldFocus::BtnApply => FieldFocus::BtnCancel,
-            FieldFocus::BtnCancel => FieldFocus::Pool,
+            FieldFocus::SortList => FieldFocus::Pool,
         };
         self.ensure_selection();
+    }
+
+    fn reset_to_defaults(&mut self) {
+        self.active = JobField::defaults();
+        self.sort_list = vec![OrderedField {
+            field: JobField::Id,
+            direction: Ordering::Asc,
+        }];
+
+        let mut pool = JobField::enumerate();
+        pool.retain(|f| !self.active.contains(f));
+        self.pool = pool;
+
+        self.pool_state
+            .select(if self.pool.is_empty() { None } else { Some(0) });
+        self.active_state.select(Some(0));
+        self.sort_state.select(Some(0));
     }
 
     fn ensure_selection(&mut self) {
@@ -591,5 +603,5 @@ pub enum FieldAction {
     Noop,
     Dismiss,
     Confirm,
-    PersistAndConfirm,
+    Save,
 }

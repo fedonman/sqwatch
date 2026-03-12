@@ -1,9 +1,6 @@
+pub mod config;
 pub mod input;
 pub mod live_file;
-
-pub fn current_user() -> String {
-    std::env::var("USER").unwrap_or_else(|_| "unknown".to_string())
-}
 
 pub fn _shorten(text: &str, limit: usize) -> String {
     if text.len() <= limit {

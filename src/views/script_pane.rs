@@ -1,10 +1,10 @@
-use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+use crossterm::event::{KeyCode, KeyEvent};
 use ratatui::{
+    Frame,
     layout::Rect,
     style::{Color, Modifier, Style},
     text::{Line, Span, Text},
     widgets::{Block, Borders, Clear, Paragraph, Wrap},
-    Frame,
 };
 use std::{collections::HashMap, process::Command};
 
@@ -36,10 +36,6 @@ impl ScriptPane {
         self.visible = true;
     }
 
-    pub fn hide(&mut self) {
-        self.visible = false;
-    }
-
     pub fn switch_job(&mut self, id: String, label: String) {
         self.job_id = Some(id);
         self.job_name = Some(label);
@@ -59,15 +55,6 @@ impl ScriptPane {
         }
     }
 
-    pub fn page_up(&mut self) {
-        self.scroll_pos = self.scroll_pos.saturating_sub(10);
-    }
-
-    pub fn page_down(&mut self) {
-        let max = self.body.lines().count() * 2;
-        self.scroll_pos = (self.scroll_pos + 10).min(max);
-    }
-
     pub fn render(&self, frame: &mut Frame, area: Rect) {
         if !self.visible {
             return;
@@ -80,7 +67,7 @@ impl ScriptPane {
 
         let title = format!("Job Script for {}/{}", label_str, id_str);
         let keys =
-            " [\u{2191}/\u{2193}] Scroll | [Ctrl+u/d] PageUp/Down | [Shift+\u{2191}/\u{2193}] Toggle Job| [q] Close ";
+            " [\u{2191}/\u{2193}] Scroll | [Shift+\u{2191}/\u{2193}] Toggle Job | [Esc] Close ";
 
         let display = self.build_display_text();
         let widget = Paragraph::new(display)
@@ -98,13 +85,8 @@ impl ScriptPane {
 
     pub fn handle_key(&mut self, key: KeyEvent) {
         match (key.modifiers, key.code) {
-            (_, KeyCode::Char('q')) => self.hide(),
             (_, KeyCode::Up) => self.scroll_up(),
             (_, KeyCode::Down) => self.scroll_down(),
-            (_, KeyCode::PageUp) | (KeyModifiers::CONTROL, KeyCode::Char('u')) => self.page_up(),
-            (_, KeyCode::PageDown) | (KeyModifiers::CONTROL, KeyCode::Char('d')) => {
-                self.page_down()
-            }
             _ => {}
         }
     }
@@ -167,11 +149,11 @@ impl ScriptPane {
 
         self.path = Some(script_path.clone());
 
-        if self.has_bat {
-            if let Some(highlighted) = run_bat(script_path) {
-                self.body = highlighted;
-                return;
-            }
+        if self.has_bat
+            && let Some(highlighted) = run_bat(script_path)
+        {
+            self.body = highlighted;
+            return;
         }
 
         self.has_bat = false;
@@ -195,9 +177,7 @@ fn run_bat(path: &str) -> Option<String> {
         .output();
 
     match result {
-        Ok(out) if out.status.success() => {
-            Some(String::from_utf8_lossy(&out.stdout).into_owned())
-        }
+        Ok(out) if out.status.success() => Some(String::from_utf8_lossy(&out.stdout).into_owned()),
         _ => None,
     }
 }
@@ -255,21 +235,19 @@ fn apply_ansi_codes(codes_str: &str, mut style: Style) -> Style {
             "3" => style = style.add_modifier(Modifier::ITALIC),
             "4" => style = style.add_modifier(Modifier::UNDERLINED),
             "38" => {
-                if let Some(&"5") = it.next() {
-                    if let Some(&idx_str) = it.next() {
-                        if let Ok(idx) = idx_str.parse::<u8>() {
-                            style = style.fg(Color::Indexed(idx));
-                        }
-                    }
+                if let Some(&"5") = it.next()
+                    && let Some(&idx_str) = it.next()
+                    && let Ok(idx) = idx_str.parse::<u8>()
+                {
+                    style = style.fg(Color::Indexed(idx));
                 }
             }
             "48" => {
-                if let Some(&"5") = it.next() {
-                    if let Some(&idx_str) = it.next() {
-                        if let Ok(idx) = idx_str.parse::<u8>() {
-                            style = style.bg(Color::Indexed(idx));
-                        }
-                    }
+                if let Some(&"5") = it.next()
+                    && let Some(&idx_str) = it.next()
+                    && let Ok(idx) = idx_str.parse::<u8>()
+                {
+                    style = style.bg(Color::Indexed(idx));
                 }
             }
             s if s.len() <= 3 && s.starts_with("3") => {

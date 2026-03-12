@@ -42,7 +42,16 @@ pub async fn cancel_jobs(job_ids: Vec<String>) -> Result<()> {
 
     let batch_limit = 200;
     for batch in job_ids.chunks(batch_limit) {
-        let _ = run_cmd("scancel", batch.to_vec()).await?;
+        let output = run_cmd("scancel", batch.to_vec()).await?;
+        if !output.status.success() {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            let msg = if stderr.trim().is_empty() {
+                format!("scancel exited with code {}", output.status)
+            } else {
+                format!("scancel: {}", stderr.trim())
+            };
+            color_eyre::eyre::bail!(msg);
+        }
     }
 
     Ok(())
@@ -68,6 +77,27 @@ pub async fn list_partitions() -> Vec<String> {
         .map(|l| l.trim().to_string())
         .filter(|l| !l.is_empty())
         .collect()
+}
+
+pub async fn list_nodes() -> Vec<String> {
+    let out = match run_cmd(
+        "sinfo",
+        vec!["-h".into(), "-N".into(), "-o".into(), "%N".into()],
+    )
+    .await
+    {
+        Ok(o) => o,
+        Err(_) => return Vec::new(),
+    };
+
+    let mut nodes: Vec<String> = String::from_utf8_lossy(&out.stdout)
+        .lines()
+        .map(|l| l.trim().to_string())
+        .filter(|l| !l.is_empty())
+        .collect();
+    nodes.sort();
+    nodes.dedup();
+    nodes
 }
 
 pub async fn list_qos() -> Vec<String> {

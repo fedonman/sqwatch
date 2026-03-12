@@ -1,33 +1,32 @@
 use color_eyre::Result;
 use crossterm::event::{KeyCode, KeyEvent, KeyEventKind, KeyModifiers, MouseEvent};
 use ratatui::{
+    Frame,
     layout::Rect,
     style::{Color, Style},
     text::Line,
     widgets::{Block, Borders, Clear, Paragraph},
-    Frame,
 };
-use regex;
 use std::time::{Duration, Instant};
 use tokio::runtime::Runtime;
 
 use crate::{
     backend::{
-        commands::{cancel_jobs, check_slurm_available, list_partitions, list_qos},
-        query::{fetch_jobs, QueryParams},
         JobState,
+        commands::{cancel_jobs, check_slurm_available, list_nodes, list_partitions, list_qos},
+        query::{QueryParams, fetch_jobs},
+    },
+    core::{
+        config::{load_columns, load_filters, save_columns, save_filters},
+        input::{InputConfig, InputLoop, Signal},
     },
     views::{
         chrome::{build_frame, popup_rect, render_statusbar, render_titlebar},
-        fields::{FieldAction, FieldSelector, JobField, Ordering, OrderedField},
+        fields::{FieldAction, FieldSelector, JobField, OrderedField, Ordering},
+        job_table::JobTable,
         output_pane::OutputPane,
         script_pane::ScriptPane,
         search::{SearchAction, SearchDialog},
-        job_table::JobTable,
-    },
-    core::{
-        current_user,
-        input::{InputConfig, InputLoop, Signal},
     },
 };
 
@@ -47,9 +46,11 @@ pub struct Dashboard {
     pub refresh_secs: u64,
     pub known_partitions: Vec<String>,
     pub known_qos: Vec<String>,
+    pub known_nodes: Vec<String>,
     pub known_states: Vec<JobState>,
     pub visible_fields: Vec<JobField>,
     pub sort_fields: Vec<OrderedField>,
+    pub login_user: String,
     confirming_cancel: bool,
 }
 
@@ -62,21 +63,25 @@ impl Dashboard {
             .build()
             .expect("tokio runtime init failed");
 
-        let login = current_user();
-        let params = QueryParams {
-            user: Some(login),
-            ..Default::default()
-        };
+        let mut params = QueryParams::default();
+        if let Some(saved) = load_filters() {
+            saved.apply_to(&mut params);
+        }
 
         let known_partitions = rt.block_on(list_partitions());
         let known_qos = rt.block_on(list_qos());
+        let known_nodes = rt.block_on(list_nodes());
         let known_states = JobState::all_known();
 
-        let visible_fields = JobField::defaults();
-        let sort_fields = vec![OrderedField {
-            field: JobField::Id,
-            direction: Ordering::Asc,
-        }];
+        let (visible_fields, sort_fields) = load_columns().unwrap_or_else(|| {
+            (
+                JobField::defaults(),
+                vec![OrderedField {
+                    field: JobField::Id,
+                    direction: Ordering::Asc,
+                }],
+            )
+        });
 
         Ok(Self {
             alive: true,
@@ -94,9 +99,11 @@ impl Dashboard {
             refresh_secs: 1,
             known_partitions,
             known_qos,
+            known_nodes,
             known_states,
             visible_fields,
             sort_fields,
+            login_user: std::env::var("USER").unwrap_or_else(|_| "unknown".to_string()),
             confirming_cancel: false,
         })
     }
@@ -127,51 +134,48 @@ impl Dashboard {
         let mut stats = Vec::new();
         let total = jobs.len();
 
-        if let Some(ref pat) = self.params.name_pattern {
-            if !pat.is_empty() {
-                match regex::Regex::new(pat) {
-                    Ok(re) => {
-                        let before = jobs.len();
-                        jobs.retain(|j| re.is_match(&j.name));
-                        let after = jobs.len();
-                        if before != after && before > 0 {
-                            stats.push(format!(
-                                "name: {}/{} ({:.1}%)",
-                                after,
-                                before,
-                                (after as f64 / before as f64) * 100.0
-                            ));
-                        }
+        if let Some(ref pat) = self.params.user
+            && !pat.is_empty()
+        {
+            match regex::Regex::new(pat) {
+                Ok(re) => {
+                    let before = jobs.len();
+                    jobs.retain(|j| re.is_match(&j.user));
+                    let after = jobs.len();
+                    if before != after && before > 0 {
+                        stats.push(format!(
+                            "user: {}/{} ({:.1}%)",
+                            after,
+                            before,
+                            (after as f64 / before as f64) * 100.0
+                        ));
                     }
-                    Err(e) => {
-                        self.flash(format!("Invalid name regex pattern: {}", e), 3);
-                    }
+                }
+                Err(e) => {
+                    self.flash(format!("Invalid user regex pattern: {}", e), 3);
                 }
             }
         }
 
-        if let Some(ref pat) = self.params.node_pattern {
-            if !pat.is_empty() {
-                match regex::Regex::new(pat) {
-                    Ok(re) => {
-                        let before = jobs.len();
-                        jobs.retain(|j| match &j.nodelist {
-                            Some(n) => re.is_match(n),
-                            None => true,
-                        });
-                        let after = jobs.len();
-                        if before != after && before > 0 {
-                            stats.push(format!(
-                                "node: {}/{} ({:.1}%)",
-                                after,
-                                before,
-                                (after as f64 / before as f64) * 100.0
-                            ));
-                        }
+        if let Some(ref pat) = self.params.name_pattern
+            && !pat.is_empty()
+        {
+            match regex::Regex::new(pat) {
+                Ok(re) => {
+                    let before = jobs.len();
+                    jobs.retain(|j| re.is_match(&j.name));
+                    let after = jobs.len();
+                    if before != after && before > 0 {
+                        stats.push(format!(
+                            "name: {}/{} ({:.1}%)",
+                            after,
+                            before,
+                            (after as f64 / before as f64) * 100.0
+                        ));
                     }
-                    Err(e) => {
-                        self.flash(format!("Invalid node regex pattern: {}", e), 3);
-                    }
+                }
+                Err(e) => {
+                    self.flash(format!("Invalid name regex pattern: {}", e), 3);
                 }
             }
         }
@@ -246,6 +250,7 @@ impl Dashboard {
             &self.known_states,
             &self.known_partitions,
             &self.known_qos,
+            &self.known_nodes,
         );
     }
 
@@ -267,21 +272,19 @@ impl Dashboard {
     }
 
     fn draw_titlebar(&self, frame: &mut Frame, area: Rect) {
-        let info = if let Some(deadline) = self.notice_expires {
+        let filters = self.filter_summary();
+
+        let flash = if let Some(deadline) = self.notice_expires {
             if Instant::now() < deadline {
-                self.notice.clone()
+                Some(self.notice.as_str())
             } else {
-                self.filter_summary()
+                None
             }
         } else {
-            self.filter_summary()
+            None
         };
 
-        render_titlebar(
-            frame,
-            area,
-            &info
-        );
+        render_titlebar(frame, area, &filters, &self.login_user, flash);
     }
 
     fn draw_cancel_confirm(&self, frame: &mut Frame, area: Rect) {
@@ -331,9 +334,7 @@ impl Dashboard {
                 }
             }
 
-            (_, KeyCode::Char('f'))
-                if !self.script.visible && !self.search_dlg.visible =>
-            {
+            (_, KeyCode::Char('f')) if !self.script.visible && !self.search_dlg.visible => {
                 self.search_dlg.visible = true;
                 self.search_dlg.load_from(&self.params);
             }
@@ -356,16 +357,12 @@ impl Dashboard {
             }
 
             (_, KeyCode::Char(' '))
-                if !self.search_dlg.visible
-                    && !self.script.visible
-                    && !self.field_sel.visible =>
+                if !self.search_dlg.visible && !self.script.visible && !self.field_sel.visible =>
             {
                 self.table.flip_selection();
             }
             (_, KeyCode::Char('a'))
-                if !self.search_dlg.visible
-                    && !self.script.visible
-                    && !self.field_sel.visible =>
+                if !self.search_dlg.visible && !self.script.visible && !self.field_sel.visible =>
             {
                 if self.table.everything_marked() {
                     self.table.unmark_all();
@@ -374,9 +371,7 @@ impl Dashboard {
                 }
             }
             (_, KeyCode::Char('x'))
-                if !self.search_dlg.visible
-                    && !self.script.visible
-                    && !self.field_sel.visible =>
+                if !self.search_dlg.visible && !self.script.visible && !self.field_sel.visible =>
             {
                 self.confirming_cancel = true;
             }
@@ -416,20 +411,24 @@ impl Dashboard {
                     &self.known_states,
                     &self.known_partitions,
                     &self.known_qos,
+                    &self.known_nodes,
                 );
                 match action {
                     SearchAction::Dismiss => self.search_dlg.visible = false,
                     SearchAction::Confirm => {
-                        self.search_dlg.visible = false;
                         if let Err(e) = self.apply_search() {
                             self.flash(format!("Failed to apply filters: {}", e), 3);
                         }
                     }
+                    SearchAction::Save => match save_filters(&self.params) {
+                        Ok(_) => self.flash("Filter settings saved".into(), 3),
+                        Err(e) => self.flash(format!("Failed to save filters: {}", e), 3),
+                    },
                     SearchAction::Noop => {}
                 }
             }
 
-            (_, KeyCode::Enter)
+            (_, KeyCode::Char('s'))
                 if !self.search_dlg.visible
                     && !self.script.visible
                     && !self.field_sel.visible
@@ -441,17 +440,17 @@ impl Dashboard {
             }
 
             (KeyModifiers::SHIFT, KeyCode::Up) if self.script.visible => {
-                if self.table.retreat() {
-                    if let Some(j) = self.table.focused_job() {
-                        self.script.switch_job(j.job_id.clone(), j.name.clone());
-                    }
+                if self.table.retreat()
+                    && let Some(j) = self.table.focused_job()
+                {
+                    self.script.switch_job(j.job_id.clone(), j.name.clone());
                 }
             }
             (KeyModifiers::SHIFT, KeyCode::Down) if self.script.visible => {
-                if self.table.advance() {
-                    if let Some(j) = self.table.focused_job() {
-                        self.script.switch_job(j.job_id.clone(), j.name.clone());
-                    }
+                if self.table.advance()
+                    && let Some(j) = self.table.focused_job()
+                {
+                    self.script.switch_job(j.job_id.clone(), j.name.clone());
                 }
             }
             _ if self.script.visible => {
@@ -474,17 +473,17 @@ impl Dashboard {
             }
 
             (KeyModifiers::SHIFT, KeyCode::Up) if self.output.visible => {
-                if self.table.retreat() {
-                    if let Some(j) = self.table.focused_job() {
-                        self.output.switch_job(j.job_id.clone());
-                    }
+                if self.table.retreat()
+                    && let Some(j) = self.table.focused_job()
+                {
+                    self.output.switch_job(j.job_id.clone());
                 }
             }
             (KeyModifiers::SHIFT, KeyCode::Down) if self.output.visible => {
-                if self.table.advance() {
-                    if let Some(j) = self.table.focused_job() {
-                        self.output.switch_job(j.job_id.clone());
-                    }
+                if self.table.advance()
+                    && let Some(j) = self.table.focused_job()
+                {
+                    self.output.switch_job(j.job_id.clone());
                 }
             }
             _ if self.output.visible => {
@@ -496,22 +495,18 @@ impl Dashboard {
                 match action {
                     FieldAction::Dismiss => self.field_sel.visible = false,
                     FieldAction::Confirm => {
-                        self.field_sel.visible = false;
                         self.visible_fields = self.field_sel.active.clone();
                         self.sort_fields = self.field_sel.sort_list.clone();
                         if let Err(e) = self.reload_jobs() {
                             self.flash(format!("Failed to refresh: {}", e), 3);
-                        } else {
-                            self.flash("Column settings applied".into(), 3);
                         }
                     }
-                    FieldAction::PersistAndConfirm => {
-                        self.field_sel.visible = false;
+                    FieldAction::Save => {
                         self.visible_fields = self.field_sel.active.clone();
                         self.sort_fields = self.field_sel.sort_list.clone();
-                        self.flash("Column settings saved and applied".into(), 3);
-                        if let Err(e) = self.reload_jobs() {
-                            self.flash(format!("Failed to refresh: {}", e), 3);
+                        match save_columns(&self.visible_fields, &self.sort_fields) {
+                            Ok(_) => self.flash("Column settings saved".into(), 3),
+                            Err(e) => self.flash(format!("Failed to save columns: {}", e), 3),
                         }
                     }
                     FieldAction::Noop => {}
@@ -529,10 +524,9 @@ impl Dashboard {
             && !self.script.visible
             && !self.field_sel.visible
             && self.refreshed_at.elapsed().as_secs() >= self.refresh_secs
+            && let Err(e) = self.reload_jobs()
         {
-            if let Err(e) = self.reload_jobs() {
-                self.flash(format!("Auto-refresh failed: {}", e), 3);
-            }
+            self.flash(format!("Auto-refresh failed: {}", e), 3);
         }
 
         if self.output.visible {
@@ -551,7 +545,6 @@ impl Dashboard {
     }
 
     fn apply_search(&mut self) -> Result<()> {
-        self.search_dlg.visible = false;
         self.flash("Applying filters...".into(), 3);
 
         let result = self.reload_jobs();
@@ -560,7 +553,10 @@ impl Dashboard {
             let desc = self.filter_summary();
             let count = self.table.jobs.len();
             if !desc.is_empty() && desc != "No filters applied" {
-                self.flash(format!("Filters applied: {} ({} jobs shown)", desc, count), 3);
+                self.flash(
+                    format!("Filters applied: {} ({} jobs shown)", desc, count),
+                    3,
+                );
             } else {
                 self.flash(format!("Filters cleared ({} jobs shown)", count), 3);
             }
@@ -573,7 +569,7 @@ impl Dashboard {
         let mut parts = Vec::new();
 
         if let Some(ref u) = self.params.user {
-            parts.push(format!("user={}", u));
+            parts.push(format!("user_regex={}", u));
         }
         if !self.params.statuses.is_empty() {
             let s = self
@@ -594,8 +590,8 @@ impl Dashboard {
         if let Some(ref n) = self.params.name_pattern {
             parts.push(format!("name_regex={}", n));
         }
-        if let Some(ref n) = self.params.node_pattern {
-            parts.push(format!("node_regex={}", n));
+        if !self.params.nodes.is_empty() {
+            parts.push(format!("nodes={}", self.params.nodes.join(",")));
         }
 
         if parts.is_empty() {
@@ -642,9 +638,7 @@ impl Dashboard {
                 let idx = self
                     .visible_fields
                     .iter()
-                    .position(|f| {
-                        std::mem::discriminant(f) == std::mem::discriminant(&first.field)
-                    })
+                    .position(|f| std::mem::discriminant(f) == std::mem::discriminant(&first.field))
                     .unwrap_or(0);
                 self.table.primary_sort_col = idx;
                 self.table.sort_asc = matches!(first.direction, Ordering::Asc);
@@ -659,11 +653,17 @@ impl Dashboard {
     fn do_cancel(&mut self) {
         let ids = self.table.marked_job_ids();
         let count = ids.len();
-        let _ = self.rt.block_on(cancel_jobs(ids));
-        if let Err(e) = self.reload_jobs() {
-            self.flash(format!("Failed to refresh after cancel: {}", e), 3);
-        } else {
-            self.flash(format!("Cancelled {} job(s)", count), 3);
+        match self.rt.block_on(cancel_jobs(ids)) {
+            Ok(_) => {
+                if let Err(e) = self.reload_jobs() {
+                    self.flash(format!("Failed to refresh after cancel: {}", e), 3);
+                } else {
+                    self.flash(format!("Cancelled {} job(s)", count), 3);
+                }
+            }
+            Err(e) => {
+                self.flash(format!("Cancel failed: {}", e), 5);
+            }
         }
     }
 }

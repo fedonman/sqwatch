@@ -1,12 +1,12 @@
 use color_eyre::Result;
-use crossbeam::channel::{unbounded, Receiver};
+use crossbeam::channel::{Receiver, unbounded};
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use ratatui::{
+    Frame,
     layout::Rect,
     style::{Color, Modifier, Style},
     text::{Line, Span, Text},
     widgets::{Block, Borders, Clear, Paragraph, Wrap},
-    Frame,
 };
 use std::{collections::HashMap, iter::once, path::PathBuf, process::Command, time::Duration};
 
@@ -67,7 +67,7 @@ impl OutputPane {
             stderr_file: None,
             monitor: None,
             data_rx: None,
-            poll_rate: Duration::from_secs(2),
+            poll_rate: Duration::from_secs(1),
             fstate: FileState::Missing,
         }
     }
@@ -176,8 +176,7 @@ impl OutputPane {
             None => format!("Log View - {}", self.stream.label()),
         };
 
-        let keys =
-            " [\u{2191}/\u{2193}] Scroll | [Shift+\u{2191}/\u{2193}] Toggle Job | [o] Toggle stdout/stderr | [q] Close ";
+        let keys = " [\u{2191}/\u{2193}] Scroll | [Shift+\u{2191}/\u{2193}] Toggle Job | [o] Toggle stdout/stderr | [Esc] Close ";
 
         let display_text = match (self.fstate, self.content.is_empty()) {
             (FileState::Missing, _) => format!(
@@ -213,7 +212,6 @@ impl OutputPane {
     pub fn handle_key(&mut self, key: KeyEvent) {
         match (key.modifiers, key.code) {
             (_, KeyCode::Char('o')) => self.toggle_stream(),
-            (_, KeyCode::Char('q')) => self.hide(),
             (_, KeyCode::Up) => self.scroll_up(),
             (_, KeyCode::Down) => self.scroll_down(),
             (_, KeyCode::PageUp) | (KeyModifiers::CONTROL, KeyCode::Char('u')) => self.page_up(),
@@ -229,7 +227,7 @@ impl OutputPane {
             .lines()
             .map(|line| {
                 if line.contains('\r') {
-                    line.split('\r').last().unwrap_or("").to_string()
+                    line.split('\r').next_back().unwrap_or("").to_string()
                 } else {
                     line.to_string()
                 }
@@ -275,7 +273,7 @@ impl OutputPane {
             .enumerate()
             .filter(|&(n, _)| {
                 if n > first_width {
-                    rest_width > 0 && (n - first_width) % rest_width == 0
+                    rest_width > 0 && (n - first_width).is_multiple_of(rest_width)
                 } else {
                     n == 0 || n == first_width
                 }
@@ -320,14 +318,8 @@ impl OutputPane {
         self.stderr_file = kv.get("StdErr").cloned();
 
         let has_current = match self.stream {
-            StreamKind::Stdout => self
-                .stdout_file
-                .as_ref()
-                .map_or(false, |p| !p.is_empty()),
-            StreamKind::Stderr => self
-                .stderr_file
-                .as_ref()
-                .map_or(false, |p| !p.is_empty()),
+            StreamKind::Stdout => self.stdout_file.as_ref().is_some_and(|p| !p.is_empty()),
+            StreamKind::Stderr => self.stderr_file.as_ref().is_some_and(|p| !p.is_empty()),
         };
 
         self.fstate = if has_current {

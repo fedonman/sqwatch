@@ -1,6 +1,6 @@
 use async_process::{Command, Output};
-use color_eyre::eyre::Error;
 use color_eyre::Result;
+use color_eyre::eyre::Error;
 use std::collections::HashMap;
 use std::str::FromStr;
 
@@ -14,24 +14,23 @@ pub struct QueryParams {
     pub partitions: Vec<String>,
     pub qos: Vec<String>,
     pub name_pattern: Option<String>,
-    pub node_pattern: Option<String>,
+    pub nodes: Vec<String>,
     pub fmt: String,
     pub ordering: HashMap<String, bool>,
 }
 
 impl Default for QueryParams {
     fn default() -> Self {
-        let login = std::env::var("USER").unwrap_or_default();
         let mut ordering = HashMap::new();
         ordering.insert("i".to_string(), true);
 
         Self {
-            user: Some(login),
+            user: None,
             statuses: Vec::new(),
             partitions: Vec::new(),
             qos: Vec::new(),
             name_pattern: None,
-            node_pattern: None,
+            nodes: Vec::new(),
             fmt: "%i|%j|%u|%T|%M|%N|%C|%m|%P|%q".to_string(),
             ordering,
         }
@@ -51,10 +50,8 @@ impl QueryParams {
     pub fn build_args(&self) -> Vec<String> {
         let mut args = Vec::new();
 
-        if let Some(ref u) = self.user {
-            args.push("--user".into());
-            args.push(u.clone());
-        }
+        // user filtering is done client-side via regex
+        args.push("--all".into());
 
         if !self.statuses.is_empty() {
             let joined = self
@@ -65,6 +62,10 @@ impl QueryParams {
                 .join(",");
             args.push("--states".into());
             args.push(joined);
+        } else {
+            // Include all job states by default (squeue only shows PENDING/RUNNING otherwise)
+            args.push("--states".into());
+            args.push("all".into());
         }
 
         if !self.partitions.is_empty() {
@@ -75,6 +76,11 @@ impl QueryParams {
         if !self.qos.is_empty() {
             args.push("--qos".into());
             args.push(self.qos.join(","));
+        }
+
+        if !self.nodes.is_empty() {
+            args.push("--nodelist".into());
+            args.push(self.nodes.join(","));
         }
 
         args.push("--format".into());
@@ -161,10 +167,7 @@ fn decode_output(output: &Output, fmt: &str) -> Result<Vec<Job>> {
                 "%i" | "%A" => job.job_id = val,
                 "%j" => job.name = val,
                 "%u" => job.user = val,
-                "%T" => {
-                    job.state =
-                        JobState::from_str(&val).unwrap_or(JobState::Unknown)
-                }
+                "%T" => job.state = JobState::from_str(&val).unwrap_or(JobState::Unknown),
                 "%M" => job.time = val,
                 "%D" => job.num_nodes = val.parse().unwrap_or(0),
                 "%N" => job.nodelist = Some(val),

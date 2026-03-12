@@ -1,14 +1,14 @@
 use crossterm::event::KeyModifiers;
 use ratatui::{
+    Frame,
     layout::{Constraint, Direction, Layout, Position, Rect},
     style::{Color, Modifier, Style},
     text::Line,
     widgets::{Block, Borders, Clear, List, ListItem, ListState, Paragraph},
-    Frame,
 };
 use regex::Regex;
 
-use crate::backend::{query::QueryParams, JobState};
+use crate::backend::{JobState, query::QueryParams};
 
 pub struct SearchDialog {
     pub tab_idx: usize,
@@ -18,10 +18,10 @@ pub struct SearchDialog {
     pub status_cursor: ListState,
     pub partition_cursor: ListState,
     pub qos_cursor: ListState,
+    pub node_cursor: ListState,
     pub name_pattern: String,
-    pub node_pattern: String,
     pub name_ok: Option<bool>,
-    pub node_ok: Option<bool>,
+    pub user_ok: Option<bool>,
     pub visible: bool,
 }
 
@@ -32,7 +32,7 @@ pub enum SearchFocus {
     Partitions,
     QoS,
     NamePattern,
-    NodePattern,
+    Nodes,
 }
 
 impl SearchDialog {
@@ -43,6 +43,8 @@ impl SearchDialog {
         pc.select(Some(0));
         let mut qc = ListState::default();
         qc.select(Some(0));
+        let mut nc = ListState::default();
+        nc.select(Some(0));
 
         Self {
             tab_idx: 0,
@@ -52,10 +54,10 @@ impl SearchDialog {
             status_cursor: sc,
             partition_cursor: pc,
             qos_cursor: qc,
+            node_cursor: nc,
             name_pattern: String::new(),
-            node_pattern: String::new(),
             name_ok: None,
-            node_ok: None,
+            user_ok: None,
             visible: false,
         }
     }
@@ -63,19 +65,25 @@ impl SearchDialog {
     pub fn load_from(&mut self, params: &QueryParams) {
         self.user_input = params.user.clone().unwrap_or_default();
         self.name_pattern = params.name_pattern.clone().unwrap_or_default();
-        self.node_pattern = params.node_pattern.clone().unwrap_or_default();
 
+        self.user_ok = if self.user_input.is_empty() {
+            None
+        } else {
+            Some(Regex::new(&self.user_input).is_ok())
+        };
         self.name_ok = if self.name_pattern.is_empty() {
             None
         } else {
             Some(Regex::new(&self.name_pattern).is_ok())
         };
+    }
 
-        self.node_ok = if self.node_pattern.is_empty() {
-            None
+    fn check_user_regex(&mut self) {
+        if self.user_input.is_empty() {
+            self.user_ok = None;
         } else {
-            Some(Regex::new(&self.node_pattern).is_ok())
-        };
+            self.user_ok = Some(Regex::new(&self.user_input).is_ok());
+        }
     }
 
     fn check_name_regex(&mut self) {
@@ -86,14 +94,7 @@ impl SearchDialog {
         }
     }
 
-    fn check_node_regex(&mut self) {
-        if self.node_pattern.is_empty() {
-            self.node_ok = None;
-        } else {
-            self.node_ok = Some(Regex::new(&self.node_pattern).is_ok());
-        }
-    }
-
+    #[allow(clippy::too_many_arguments)]
     pub fn render(
         &mut self,
         frame: &mut Frame,
@@ -102,6 +103,7 @@ impl SearchDialog {
         all_statuses: &[JobState],
         all_partitions: &[String],
         all_qos: &[String],
+        all_nodes: &[String],
     ) {
         frame.render_widget(Clear, area);
 
@@ -115,7 +117,7 @@ impl SearchDialog {
             .direction(Direction::Vertical)
             .margin(1)
             .constraints([
-                Constraint::Length(8),
+                Constraint::Length(5),
                 Constraint::Min(5),
                 Constraint::Length(3),
             ])
@@ -123,20 +125,22 @@ impl SearchDialog {
 
         self.draw_text_inputs(frame, rows[0]);
 
-        let triple = Layout::default()
+        let quad = Layout::default()
             .direction(Direction::Horizontal)
             .constraints([
-                Constraint::Ratio(1, 3),
-                Constraint::Ratio(1, 3),
-                Constraint::Ratio(1, 3),
+                Constraint::Ratio(1, 4),
+                Constraint::Ratio(1, 4),
+                Constraint::Ratio(1, 4),
+                Constraint::Ratio(1, 4),
             ])
             .split(rows[1]);
 
-        self.draw_status_list(frame, triple[0], params, all_statuses);
-        self.draw_partition_list(frame, triple[1], params, all_partitions);
-        self.draw_qos_list(frame, triple[2], params, all_qos);
+        self.draw_node_list(frame, quad[0], params, all_nodes);
+        self.draw_partition_list(frame, quad[1], params, all_partitions);
+        self.draw_status_list(frame, quad[2], params, all_statuses);
+        self.draw_qos_list(frame, quad[3], params, all_qos);
 
-        let hint = "\u{2191}/\u{2193}: Navigate | \u{2190}/\u{2192}: Switch Filters | Enter: Select/Input | Ctrl+a: Apply | Esc: Close";
+        let hint = "\u{2190}/\u{2192}: Switch | \u{2191}/\u{2193}: Navigate | Enter: Select/Apply | r: Reset | Ctrl+S: Save | Esc: Close";
         let help = Paragraph::new(hint)
             .style(Style::default().fg(Color::Gray))
             .block(Block::default().borders(Borders::ALL));
@@ -147,22 +151,24 @@ impl SearchDialog {
         let cells = Layout::default()
             .direction(Direction::Horizontal)
             .margin(1)
-            .constraints([
-                Constraint::Ratio(1, 3),
-                Constraint::Ratio(1, 3),
-                Constraint::Ratio(1, 3),
-            ])
+            .constraints([Constraint::Ratio(1, 2), Constraint::Ratio(1, 2)])
             .split(area);
 
         // Username
+        let u_title = match self.user_ok {
+            Some(true) => "Username (regex) \u{2713}",
+            Some(false) => "Username (regex) \u{2717} Invalid",
+            None => "Username (regex)",
+        };
+        let u_style = match (self.focus == SearchFocus::Username, self.user_ok) {
+            (true, _) => Style::default().fg(Color::Cyan),
+            (_, Some(false)) => Style::default().fg(Color::Red),
+            _ => Style::default(),
+        };
         let u_block = Block::default()
-            .title("Username")
+            .title(u_title)
             .borders(Borders::ALL)
-            .style(if self.focus == SearchFocus::Username {
-                Style::default().fg(Color::Cyan)
-            } else {
-                Style::default()
-            });
+            .style(u_style);
         frame.render_widget(
             Paragraph::new(self.user_input.clone()).block(u_block),
             cells[0],
@@ -170,9 +176,9 @@ impl SearchDialog {
 
         // Name pattern
         let n_title = match self.name_ok {
-            Some(true) => "Job Name Filter (regex) \u{2713}",
-            Some(false) => "Job Name Filter (regex) \u{2717} Invalid",
-            None => "Job Name Filter (regex)",
+            Some(true) => "Job Name (regex) \u{2713}",
+            Some(false) => "Job Name (regex) \u{2717} Invalid",
+            None => "Job Name (regex)",
         };
         let n_style = match (self.focus == SearchFocus::NamePattern, self.name_ok) {
             (true, _) => Style::default().fg(Color::Cyan),
@@ -188,26 +194,6 @@ impl SearchDialog {
             cells[1],
         );
 
-        // Node pattern
-        let nd_title = match self.node_ok {
-            Some(true) => "Node Filter (regex) \u{2713}",
-            Some(false) => "Node Filter (regex) \u{2717} Invalid",
-            None => "Node Filter (regex)",
-        };
-        let nd_style = match (self.focus == SearchFocus::NodePattern, self.node_ok) {
-            (true, _) => Style::default().fg(Color::Cyan),
-            (_, Some(false)) => Style::default().fg(Color::Red),
-            _ => Style::default(),
-        };
-        let nd_block = Block::default()
-            .title(nd_title)
-            .borders(Borders::ALL)
-            .style(nd_style);
-        frame.render_widget(
-            Paragraph::new(self.node_pattern.clone()).block(nd_block),
-            cells[2],
-        );
-
         if self.editing {
             let (cx, cy) = match self.focus {
                 SearchFocus::Username => (
@@ -217,10 +203,6 @@ impl SearchDialog {
                 SearchFocus::NamePattern => (
                     cells[1].x + 1 + self.name_pattern.len() as u16,
                     cells[1].y + 1,
-                ),
-                SearchFocus::NodePattern => (
-                    cells[2].x + 1 + self.node_pattern.len() as u16,
-                    cells[2].y + 1,
                 ),
                 _ => (0, 0),
             };
@@ -326,6 +308,37 @@ impl SearchDialog {
         frame.render_stateful_widget(widget, area, &mut self.qos_cursor);
     }
 
+    fn draw_node_list(
+        &mut self,
+        frame: &mut Frame,
+        area: Rect,
+        params: &QueryParams,
+        choices: &[String],
+    ) {
+        let block = Block::default().title("Nodes").borders(Borders::ALL).style(
+            if self.focus == SearchFocus::Nodes {
+                Style::default().fg(Color::Cyan)
+            } else {
+                Style::default()
+            },
+        );
+
+        let items: Vec<ListItem> = choices
+            .iter()
+            .map(|n| {
+                let on = params.nodes.contains(n);
+                let mark = if on { "[X] " } else { "[ ] " };
+                let c = if on { Color::Green } else { Color::White };
+                ListItem::new(Line::from(format!("{}{}", mark, n))).style(Style::default().fg(c))
+            })
+            .collect();
+
+        let widget = List::new(items)
+            .block(block)
+            .highlight_style(Style::default().add_modifier(Modifier::BOLD));
+        frame.render_stateful_widget(widget, area, &mut self.node_cursor);
+    }
+
     pub fn handle_key(
         &mut self,
         key: crossterm::event::KeyEvent,
@@ -333,6 +346,7 @@ impl SearchDialog {
         all_statuses: &[JobState],
         all_partitions: &[String],
         all_qos: &[String],
+        all_nodes: &[String],
     ) -> SearchAction {
         use crossterm::event::KeyCode;
 
@@ -345,8 +359,8 @@ impl SearchDialog {
                 return SearchAction::Noop;
             }
             KeyCode::F(10) => return SearchAction::Confirm,
-            KeyCode::Char('a') if key.modifiers.contains(KeyModifiers::CONTROL) => {
-                return SearchAction::Confirm;
+            KeyCode::Char('s') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+                return SearchAction::Save;
             }
             _ => {}
         }
@@ -356,57 +370,93 @@ impl SearchDialog {
         }
 
         match key.code {
+            KeyCode::Char('r') => {
+                self.user_input.clear();
+                self.user_ok = None;
+                self.name_pattern.clear();
+                self.name_ok = None;
+                params.user = None;
+                params.name_pattern = None;
+                params.statuses.clear();
+                params.partitions.clear();
+                params.qos.clear();
+                params.nodes.clear();
+                SearchAction::Confirm
+            }
             KeyCode::Enter => match self.focus {
-                SearchFocus::Username | SearchFocus::NamePattern | SearchFocus::NodePattern => {
+                SearchFocus::Username | SearchFocus::NamePattern => {
                     self.editing = true;
                     SearchAction::Noop
                 }
-                SearchFocus::States => {
-                    if let Some(idx) = self.status_cursor.selected() {
-                        if idx < all_statuses.len() {
-                            let st = all_statuses[idx];
-                            if params.statuses.contains(&st) {
-                                params.statuses.retain(|s| s != &st);
-                            } else {
-                                params.statuses.push(st);
-                            }
+                SearchFocus::Nodes => {
+                    if let Some(idx) = self.node_cursor.selected()
+                        && idx < all_nodes.len()
+                    {
+                        let n = all_nodes[idx].clone();
+                        if params.nodes.contains(&n) {
+                            params.nodes.retain(|x| x != &n);
+                        } else {
+                            params.nodes.push(n);
                         }
                     }
-                    SearchAction::Noop
+                    SearchAction::Confirm
+                }
+                SearchFocus::States => {
+                    if let Some(idx) = self.status_cursor.selected()
+                        && idx < all_statuses.len()
+                    {
+                        let st = all_statuses[idx];
+                        if params.statuses.contains(&st) {
+                            params.statuses.retain(|s| s != &st);
+                        } else {
+                            params.statuses.push(st);
+                        }
+                    }
+                    SearchAction::Confirm
                 }
                 SearchFocus::Partitions => {
-                    if let Some(idx) = self.partition_cursor.selected() {
-                        if idx < all_partitions.len() {
-                            let p = all_partitions[idx].clone();
-                            if params.partitions.contains(&p) {
-                                params.partitions.retain(|x| x != &p);
-                            } else {
-                                params.partitions.push(p);
-                            }
+                    if let Some(idx) = self.partition_cursor.selected()
+                        && idx < all_partitions.len()
+                    {
+                        let p = all_partitions[idx].clone();
+                        if params.partitions.contains(&p) {
+                            params.partitions.retain(|x| x != &p);
+                        } else {
+                            params.partitions.push(p);
                         }
                     }
-                    SearchAction::Noop
+                    SearchAction::Confirm
                 }
                 SearchFocus::QoS => {
-                    if let Some(idx) = self.qos_cursor.selected() {
-                        if idx < all_qos.len() {
-                            let q = all_qos[idx].clone();
-                            if params.qos.contains(&q) {
-                                params.qos.retain(|x| x != &q);
-                            } else {
-                                params.qos.push(q);
-                            }
+                    if let Some(idx) = self.qos_cursor.selected()
+                        && idx < all_qos.len()
+                    {
+                        let q = all_qos[idx].clone();
+                        if params.qos.contains(&q) {
+                            params.qos.retain(|x| x != &q);
+                        } else {
+                            params.qos.push(q);
                         }
                     }
-                    SearchAction::Noop
+                    SearchAction::Confirm
                 }
             },
             KeyCode::Up => {
-                self.navigate_list_up(all_statuses.len(), all_partitions.len(), all_qos.len());
+                self.navigate_list_up(
+                    all_statuses.len(),
+                    all_partitions.len(),
+                    all_qos.len(),
+                    all_nodes.len(),
+                );
                 SearchAction::Noop
             }
             KeyCode::Down => {
-                self.navigate_list_down(all_statuses.len(), all_partitions.len(), all_qos.len());
+                self.navigate_list_down(
+                    all_statuses.len(),
+                    all_partitions.len(),
+                    all_qos.len(),
+                    all_nodes.len(),
+                );
                 SearchAction::Noop
             }
             KeyCode::Left => {
@@ -431,43 +481,91 @@ impl SearchDialog {
         }
     }
 
-    fn navigate_list_up(&mut self, n_states: usize, n_parts: usize, n_qos: usize) {
+    fn navigate_list_up(&mut self, n_states: usize, n_parts: usize, n_qos: usize, n_nodes: usize) {
         match self.focus {
             SearchFocus::States => {
                 let cur = self.status_cursor.selected().unwrap_or(0);
-                let next = if cur == 0 { n_states - 1 } else { cur - 1 };
+                let next = if cur == 0 {
+                    n_states.saturating_sub(1)
+                } else {
+                    cur - 1
+                };
                 self.status_cursor.select(Some(next));
             }
             SearchFocus::Partitions => {
                 let cur = self.partition_cursor.selected().unwrap_or(0);
-                let next = if cur == 0 { n_parts - 1 } else { cur - 1 };
+                let next = if cur == 0 {
+                    n_parts.saturating_sub(1)
+                } else {
+                    cur - 1
+                };
                 self.partition_cursor.select(Some(next));
             }
             SearchFocus::QoS => {
                 let cur = self.qos_cursor.selected().unwrap_or(0);
-                let next = if cur == 0 { n_qos - 1 } else { cur - 1 };
+                let next = if cur == 0 {
+                    n_qos.saturating_sub(1)
+                } else {
+                    cur - 1
+                };
                 self.qos_cursor.select(Some(next));
+            }
+            SearchFocus::Nodes => {
+                let cur = self.node_cursor.selected().unwrap_or(0);
+                let next = if cur == 0 {
+                    n_nodes.saturating_sub(1)
+                } else {
+                    cur - 1
+                };
+                self.node_cursor.select(Some(next));
             }
             _ => {}
         }
     }
 
-    fn navigate_list_down(&mut self, n_states: usize, n_parts: usize, n_qos: usize) {
+    fn navigate_list_down(
+        &mut self,
+        n_states: usize,
+        n_parts: usize,
+        n_qos: usize,
+        n_nodes: usize,
+    ) {
         match self.focus {
             SearchFocus::States => {
                 let cur = self.status_cursor.selected().unwrap_or(0);
-                let next = if cur >= n_states - 1 { 0 } else { cur + 1 };
+                let next = if n_states == 0 || cur >= n_states - 1 {
+                    0
+                } else {
+                    cur + 1
+                };
                 self.status_cursor.select(Some(next));
             }
             SearchFocus::Partitions => {
                 let cur = self.partition_cursor.selected().unwrap_or(0);
-                let next = if cur >= n_parts - 1 { 0 } else { cur + 1 };
+                let next = if n_parts == 0 || cur >= n_parts - 1 {
+                    0
+                } else {
+                    cur + 1
+                };
                 self.partition_cursor.select(Some(next));
             }
             SearchFocus::QoS => {
                 let cur = self.qos_cursor.selected().unwrap_or(0);
-                let next = if cur >= n_qos - 1 { 0 } else { cur + 1 };
+                let next = if n_qos == 0 || cur >= n_qos - 1 {
+                    0
+                } else {
+                    cur + 1
+                };
                 self.qos_cursor.select(Some(next));
+            }
+            SearchFocus::Nodes => {
+                let cur = self.node_cursor.selected().unwrap_or(0);
+                let next = if n_nodes == 0 || cur >= n_nodes - 1 {
+                    0
+                } else {
+                    cur + 1
+                };
+                self.node_cursor.select(Some(next));
             }
             _ => {}
         }
@@ -484,11 +582,12 @@ impl SearchDialog {
             KeyCode::Enter => {
                 match self.focus {
                     SearchFocus::Username => {
-                        params.user = if self.user_input.is_empty() {
-                            None
-                        } else {
-                            Some(self.user_input.clone())
-                        };
+                        if self.user_input.is_empty() {
+                            params.user = None;
+                            self.user_ok = None;
+                        } else if self.user_ok == Some(true) {
+                            params.user = Some(self.user_input.clone());
+                        }
                     }
                     SearchFocus::NamePattern => {
                         if self.name_pattern.is_empty() {
@@ -498,29 +597,20 @@ impl SearchDialog {
                             params.name_pattern = Some(self.name_pattern.clone());
                         }
                     }
-                    SearchFocus::NodePattern => {
-                        if self.node_pattern.is_empty() {
-                            params.node_pattern = None;
-                            self.node_ok = None;
-                        } else if self.node_ok == Some(true) {
-                            params.node_pattern = Some(self.node_pattern.clone());
-                        }
-                    }
                     _ => {}
                 }
                 self.editing = false;
-                SearchAction::Noop
+                SearchAction::Confirm
             }
             KeyCode::Char(ch) => {
                 match self.focus {
-                    SearchFocus::Username => self.user_input.push(ch),
+                    SearchFocus::Username => {
+                        self.user_input.push(ch);
+                        self.check_user_regex();
+                    }
                     SearchFocus::NamePattern => {
                         self.name_pattern.push(ch);
                         self.check_name_regex();
-                    }
-                    SearchFocus::NodePattern => {
-                        self.node_pattern.push(ch);
-                        self.check_node_regex();
                     }
                     _ => {}
                 }
@@ -530,14 +620,11 @@ impl SearchDialog {
                 match self.focus {
                     SearchFocus::Username => {
                         self.user_input.pop();
+                        self.check_user_regex();
                     }
                     SearchFocus::NamePattern => {
                         self.name_pattern.pop();
                         self.check_name_regex();
-                    }
-                    SearchFocus::NodePattern => {
-                        self.node_pattern.pop();
-                        self.check_node_regex();
                     }
                     _ => {}
                 }
@@ -551,9 +638,9 @@ impl SearchDialog {
         self.focus = match self.tab_idx {
             0 => SearchFocus::Username,
             1 => SearchFocus::NamePattern,
-            2 => SearchFocus::NodePattern,
-            3 => SearchFocus::States,
-            4 => SearchFocus::Partitions,
+            2 => SearchFocus::Nodes,
+            3 => SearchFocus::Partitions,
+            4 => SearchFocus::States,
             5 => SearchFocus::QoS,
             _ => SearchFocus::Username,
         };
@@ -565,4 +652,5 @@ pub enum SearchAction {
     Noop,
     Dismiss,
     Confirm,
+    Save,
 }
