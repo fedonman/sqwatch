@@ -116,7 +116,6 @@ impl FileObserver {
                                     Err(_) if !p.exists() => {
                                         // File doesn't exist yet (e.g. pending job).
                                         // Poll until it appears, then set up the watch.
-                                        self.watched = Some(p.clone());
                                         let interval = self.poll_interval;
                                         let inbox_tx = self.channel_back.clone();
                                         thread::spawn(move || {
