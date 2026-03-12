@@ -55,11 +55,11 @@ impl JobTable {
             .collect();
 
         // Restore cursor position
-        if let Some(ref id) = focused_id {
-            if let Some(pos) = self.jobs.iter().position(|j| &j.job_id == id) {
-                self.tbl_state.select(Some(pos));
-                return;
-            }
+        if let Some(ref id) = focused_id
+            && let Some(pos) = self.jobs.iter().position(|j| &j.job_id == id)
+        {
+            self.tbl_state.select(Some(pos));
+            return;
         }
 
         if let Some(sel) = self.tbl_state.selected() {

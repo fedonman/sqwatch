@@ -149,11 +149,11 @@ impl ScriptPane {
 
         self.path = Some(script_path.clone());
 
-        if self.has_bat {
-            if let Some(highlighted) = run_bat(script_path) {
-                self.body = highlighted;
-                return;
-            }
+        if self.has_bat
+            && let Some(highlighted) = run_bat(script_path)
+        {
+            self.body = highlighted;
+            return;
         }
 
         self.has_bat = false;
@@ -237,21 +237,19 @@ fn apply_ansi_codes(codes_str: &str, mut style: Style) -> Style {
             "3" => style = style.add_modifier(Modifier::ITALIC),
             "4" => style = style.add_modifier(Modifier::UNDERLINED),
             "38" => {
-                if let Some(&"5") = it.next() {
-                    if let Some(&idx_str) = it.next() {
-                        if let Ok(idx) = idx_str.parse::<u8>() {
-                            style = style.fg(Color::Indexed(idx));
-                        }
-                    }
+                if let Some(&"5") = it.next()
+                    && let Some(&idx_str) = it.next()
+                    && let Ok(idx) = idx_str.parse::<u8>()
+                {
+                    style = style.fg(Color::Indexed(idx));
                 }
             }
             "48" => {
-                if let Some(&"5") = it.next() {
-                    if let Some(&idx_str) = it.next() {
-                        if let Ok(idx) = idx_str.parse::<u8>() {
-                            style = style.bg(Color::Indexed(idx));
-                        }
-                    }
+                if let Some(&"5") = it.next()
+                    && let Some(&idx_str) = it.next()
+                    && let Ok(idx) = idx_str.parse::<u8>()
+                {
+                    style = style.bg(Color::Indexed(idx));
                 }
             }
             s if s.len() <= 3 && s.starts_with("3") => {

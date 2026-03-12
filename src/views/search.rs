@@ -94,6 +94,7 @@ impl SearchDialog {
         }
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub fn render(
         &mut self,
         frame: &mut Frame,
@@ -384,7 +385,7 @@ impl SearchDialog {
                 params.partitions.clear();
                 params.qos.clear();
                 params.nodes.clear();
-                return SearchAction::Confirm;
+                SearchAction::Confirm
             }
             KeyCode::Enter => match self.focus {
                 SearchFocus::Username | SearchFocus::NamePattern => {
@@ -392,53 +393,53 @@ impl SearchDialog {
                     SearchAction::Noop
                 }
                 SearchFocus::Nodes => {
-                    if let Some(idx) = self.node_cursor.selected() {
-                        if idx < all_nodes.len() {
-                            let n = all_nodes[idx].clone();
-                            if params.nodes.contains(&n) {
-                                params.nodes.retain(|x| x != &n);
-                            } else {
-                                params.nodes.push(n);
-                            }
+                    if let Some(idx) = self.node_cursor.selected()
+                        && idx < all_nodes.len()
+                    {
+                        let n = all_nodes[idx].clone();
+                        if params.nodes.contains(&n) {
+                            params.nodes.retain(|x| x != &n);
+                        } else {
+                            params.nodes.push(n);
                         }
                     }
                     SearchAction::Confirm
                 }
                 SearchFocus::States => {
-                    if let Some(idx) = self.status_cursor.selected() {
-                        if idx < all_statuses.len() {
-                            let st = all_statuses[idx];
-                            if params.statuses.contains(&st) {
-                                params.statuses.retain(|s| s != &st);
-                            } else {
-                                params.statuses.push(st);
-                            }
+                    if let Some(idx) = self.status_cursor.selected()
+                        && idx < all_statuses.len()
+                    {
+                        let st = all_statuses[idx];
+                        if params.statuses.contains(&st) {
+                            params.statuses.retain(|s| s != &st);
+                        } else {
+                            params.statuses.push(st);
                         }
                     }
                     SearchAction::Confirm
                 }
                 SearchFocus::Partitions => {
-                    if let Some(idx) = self.partition_cursor.selected() {
-                        if idx < all_partitions.len() {
-                            let p = all_partitions[idx].clone();
-                            if params.partitions.contains(&p) {
-                                params.partitions.retain(|x| x != &p);
-                            } else {
-                                params.partitions.push(p);
-                            }
+                    if let Some(idx) = self.partition_cursor.selected()
+                        && idx < all_partitions.len()
+                    {
+                        let p = all_partitions[idx].clone();
+                        if params.partitions.contains(&p) {
+                            params.partitions.retain(|x| x != &p);
+                        } else {
+                            params.partitions.push(p);
                         }
                     }
                     SearchAction::Confirm
                 }
                 SearchFocus::QoS => {
-                    if let Some(idx) = self.qos_cursor.selected() {
-                        if idx < all_qos.len() {
-                            let q = all_qos[idx].clone();
-                            if params.qos.contains(&q) {
-                                params.qos.retain(|x| x != &q);
-                            } else {
-                                params.qos.push(q);
-                            }
+                    if let Some(idx) = self.qos_cursor.selected()
+                        && idx < all_qos.len()
+                    {
+                        let q = all_qos[idx].clone();
+                        if params.qos.contains(&q) {
+                            params.qos.retain(|x| x != &q);
+                        } else {
+                            params.qos.push(q);
                         }
                     }
                     SearchAction::Confirm

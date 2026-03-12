@@ -391,35 +391,36 @@ impl FieldSelector {
 
         match key.code {
             KeyCode::Up => {
-                if let Some(cur) = self.pool_state.selected() {
-                    if cur > 0 {
-                        self.pool_state.select(Some(cur - 1));
-                    }
+                if let Some(cur) = self.pool_state.selected()
+                    && cur > 0
+                {
+                    self.pool_state.select(Some(cur - 1));
                 }
                 FieldAction::Noop
             }
             KeyCode::Down => {
-                if let Some(cur) = self.pool_state.selected() {
-                    if cur < self.pool.len().saturating_sub(1) {
-                        self.pool_state.select(Some(cur + 1));
-                    }
+                if let Some(cur) = self.pool_state.selected()
+                    && cur < self.pool.len().saturating_sub(1)
+                {
+                    self.pool_state.select(Some(cur + 1));
                 }
                 FieldAction::Noop
             }
             KeyCode::Enter => {
-                if let Some(cur) = self.pool_state.selected() {
-                    if !self.pool.is_empty() && cur < self.pool.len() {
-                        let field = self.pool.remove(cur);
-                        self.active.push(field);
+                if let Some(cur) = self.pool_state.selected()
+                    && !self.pool.is_empty()
+                    && cur < self.pool.len()
+                {
+                    let field = self.pool.remove(cur);
+                    self.active.push(field);
 
-                        if self.pool.is_empty() {
-                            self.pool_state.select(None);
-                        } else if cur >= self.pool.len() {
-                            self.pool_state.select(Some(self.pool.len() - 1));
-                        }
-
-                        self.active_state.select(Some(self.active.len() - 1));
+                    if self.pool.is_empty() {
+                        self.pool_state.select(None);
+                    } else if cur >= self.pool.len() {
+                        self.pool_state.select(Some(self.pool.len() - 1));
                     }
+
+                    self.active_state.select(Some(self.active.len() - 1));
                 }
                 FieldAction::Confirm
             }
@@ -433,61 +434,63 @@ impl FieldSelector {
 
         match key.code {
             KeyCode::Up => {
-                if let Some(cur) = self.active_state.selected() {
-                    if cur > 0 {
-                        if key.modifiers.contains(KeyModifiers::SHIFT) {
-                            self.active.swap(cur, cur - 1);
-                            self.active_state.select(Some(cur - 1));
-                            return FieldAction::Confirm;
-                        }
+                if let Some(cur) = self.active_state.selected()
+                    && cur > 0
+                {
+                    if key.modifiers.contains(KeyModifiers::SHIFT) {
+                        self.active.swap(cur, cur - 1);
                         self.active_state.select(Some(cur - 1));
+                        return FieldAction::Confirm;
                     }
+                    self.active_state.select(Some(cur - 1));
                 }
                 FieldAction::Noop
             }
             KeyCode::Down => {
-                if let Some(cur) = self.active_state.selected() {
-                    if cur < self.active.len().saturating_sub(1) {
-                        if key.modifiers.contains(KeyModifiers::SHIFT) {
-                            self.active.swap(cur, cur + 1);
-                            self.active_state.select(Some(cur + 1));
-                            return FieldAction::Confirm;
-                        }
+                if let Some(cur) = self.active_state.selected()
+                    && cur < self.active.len().saturating_sub(1)
+                {
+                    if key.modifiers.contains(KeyModifiers::SHIFT) {
+                        self.active.swap(cur, cur + 1);
                         self.active_state.select(Some(cur + 1));
+                        return FieldAction::Confirm;
                     }
+                    self.active_state.select(Some(cur + 1));
                 }
                 FieldAction::Noop
             }
             KeyCode::Enter => {
-                if let Some(cur) = self.active_state.selected() {
-                    if !self.active.is_empty() && cur < self.active.len() {
-                        let field = self.active[cur];
-                        let already_sorting = self.sort_list.iter().any(|of| of.field == field);
-                        if !already_sorting {
-                            self.sort_list.push(OrderedField {
-                                field,
-                                direction: Ordering::Asc,
-                            });
-                            self.sort_state.select(Some(self.sort_list.len() - 1));
-                        }
+                if let Some(cur) = self.active_state.selected()
+                    && !self.active.is_empty()
+                    && cur < self.active.len()
+                {
+                    let field = self.active[cur];
+                    let already_sorting = self.sort_list.iter().any(|of| of.field == field);
+                    if !already_sorting {
+                        self.sort_list.push(OrderedField {
+                            field,
+                            direction: Ordering::Asc,
+                        });
+                        self.sort_state.select(Some(self.sort_list.len() - 1));
                     }
                 }
                 FieldAction::Confirm
             }
             KeyCode::Delete | KeyCode::Backspace => {
-                if let Some(cur) = self.active_state.selected() {
-                    if !self.active.is_empty() && cur < self.active.len() {
-                        let removed = self.active.remove(cur);
-                        self.pool.push(removed);
-                        self.sort_list.retain(|of| of.field != removed);
+                if let Some(cur) = self.active_state.selected()
+                    && !self.active.is_empty()
+                    && cur < self.active.len()
+                {
+                    let removed = self.active.remove(cur);
+                    self.pool.push(removed);
+                    self.sort_list.retain(|of| of.field != removed);
 
-                        if self.active.is_empty() {
-                            self.active_state.select(None);
-                        } else if cur >= self.active.len() {
-                            self.active_state.select(Some(self.active.len() - 1));
-                        }
-                        self.pool_state.select(Some(self.pool.len() - 1));
+                    if self.active.is_empty() {
+                        self.active_state.select(None);
+                    } else if cur >= self.active.len() {
+                        self.active_state.select(Some(self.active.len() - 1));
                     }
+                    self.pool_state.select(Some(self.pool.len() - 1));
                 }
                 FieldAction::Confirm
             }
@@ -501,48 +504,49 @@ impl FieldSelector {
 
         match key.code {
             KeyCode::Up => {
-                if let Some(cur) = self.sort_state.selected() {
-                    if cur > 0 {
-                        if key.modifiers.contains(KeyModifiers::SHIFT) {
-                            self.sort_list.swap(cur, cur - 1);
-                            self.sort_state.select(Some(cur - 1));
-                            return FieldAction::Confirm;
-                        }
+                if let Some(cur) = self.sort_state.selected()
+                    && cur > 0
+                {
+                    if key.modifiers.contains(KeyModifiers::SHIFT) {
+                        self.sort_list.swap(cur, cur - 1);
                         self.sort_state.select(Some(cur - 1));
+                        return FieldAction::Confirm;
                     }
+                    self.sort_state.select(Some(cur - 1));
                 }
                 FieldAction::Noop
             }
             KeyCode::Down => {
-                if let Some(cur) = self.sort_state.selected() {
-                    if cur < self.sort_list.len().saturating_sub(1) {
-                        if key.modifiers.contains(KeyModifiers::SHIFT) {
-                            self.sort_list.swap(cur, cur + 1);
-                            self.sort_state.select(Some(cur + 1));
-                            return FieldAction::Confirm;
-                        }
+                if let Some(cur) = self.sort_state.selected()
+                    && cur < self.sort_list.len().saturating_sub(1)
+                {
+                    if key.modifiers.contains(KeyModifiers::SHIFT) {
+                        self.sort_list.swap(cur, cur + 1);
                         self.sort_state.select(Some(cur + 1));
+                        return FieldAction::Confirm;
                     }
+                    self.sort_state.select(Some(cur + 1));
                 }
                 FieldAction::Noop
             }
             KeyCode::Char(' ') | KeyCode::Enter => {
-                if let Some(cur) = self.sort_state.selected() {
-                    if cur < self.sort_list.len() {
-                        self.sort_list[cur].direction = self.sort_list[cur].direction.flip();
-                    }
+                if let Some(cur) = self.sort_state.selected()
+                    && cur < self.sort_list.len()
+                {
+                    self.sort_list[cur].direction = self.sort_list[cur].direction.flip();
                 }
                 FieldAction::Confirm
             }
             KeyCode::Delete | KeyCode::Backspace => {
-                if let Some(cur) = self.sort_state.selected() {
-                    if !self.sort_list.is_empty() && cur < self.sort_list.len() {
-                        self.sort_list.remove(cur);
-                        if self.sort_list.is_empty() {
-                            self.sort_state.select(None);
-                        } else if cur >= self.sort_list.len() {
-                            self.sort_state.select(Some(self.sort_list.len() - 1));
-                        }
+                if let Some(cur) = self.sort_state.selected()
+                    && !self.sort_list.is_empty()
+                    && cur < self.sort_list.len()
+                {
+                    self.sort_list.remove(cur);
+                    if self.sort_list.is_empty() {
+                        self.sort_state.select(None);
+                    } else if cur >= self.sort_list.len() {
+                        self.sort_state.select(Some(self.sort_list.len() - 1));
                     }
                 }
                 FieldAction::Confirm

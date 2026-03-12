@@ -228,7 +228,7 @@ impl OutputPane {
             .lines()
             .map(|line| {
                 if line.contains('\r') {
-                    line.split('\r').last().unwrap_or("").to_string()
+                    line.split('\r').next_back().unwrap_or("").to_string()
                 } else {
                     line.to_string()
                 }
@@ -274,7 +274,7 @@ impl OutputPane {
             .enumerate()
             .filter(|&(n, _)| {
                 if n > first_width {
-                    rest_width > 0 && (n - first_width) % rest_width == 0
+                    rest_width > 0 && (n - first_width).is_multiple_of(rest_width)
                 } else {
                     n == 0 || n == first_width
                 }
@@ -322,11 +322,11 @@ impl OutputPane {
             StreamKind::Stdout => self
                 .stdout_file
                 .as_ref()
-                .map_or(false, |p| !p.is_empty()),
+                .is_some_and(|p| !p.is_empty()),
             StreamKind::Stderr => self
                 .stderr_file
                 .as_ref()
-                .map_or(false, |p| !p.is_empty()),
+                .is_some_and(|p| !p.is_empty()),
         };
 
         self.fstate = if has_current {

@@ -7,7 +7,6 @@ use ratatui::{
     widgets::{Block, Borders, Clear, Paragraph},
     Frame,
 };
-use regex;
 use std::time::{Duration, Instant};
 use tokio::runtime::Runtime;
 
@@ -135,48 +134,48 @@ impl Dashboard {
         let mut stats = Vec::new();
         let total = jobs.len();
 
-        if let Some(ref pat) = self.params.user {
-            if !pat.is_empty() {
-                match regex::Regex::new(pat) {
-                    Ok(re) => {
-                        let before = jobs.len();
-                        jobs.retain(|j| re.is_match(&j.user));
-                        let after = jobs.len();
-                        if before != after && before > 0 {
-                            stats.push(format!(
-                                "user: {}/{} ({:.1}%)",
-                                after,
-                                before,
-                                (after as f64 / before as f64) * 100.0
-                            ));
-                        }
+        if let Some(ref pat) = self.params.user
+            && !pat.is_empty()
+        {
+            match regex::Regex::new(pat) {
+                Ok(re) => {
+                    let before = jobs.len();
+                    jobs.retain(|j| re.is_match(&j.user));
+                    let after = jobs.len();
+                    if before != after && before > 0 {
+                        stats.push(format!(
+                            "user: {}/{} ({:.1}%)",
+                            after,
+                            before,
+                            (after as f64 / before as f64) * 100.0
+                        ));
                     }
-                    Err(e) => {
-                        self.flash(format!("Invalid user regex pattern: {}", e), 3);
-                    }
+                }
+                Err(e) => {
+                    self.flash(format!("Invalid user regex pattern: {}", e), 3);
                 }
             }
         }
 
-        if let Some(ref pat) = self.params.name_pattern {
-            if !pat.is_empty() {
-                match regex::Regex::new(pat) {
-                    Ok(re) => {
-                        let before = jobs.len();
-                        jobs.retain(|j| re.is_match(&j.name));
-                        let after = jobs.len();
-                        if before != after && before > 0 {
-                            stats.push(format!(
-                                "name: {}/{} ({:.1}%)",
-                                after,
-                                before,
-                                (after as f64 / before as f64) * 100.0
-                            ));
-                        }
+        if let Some(ref pat) = self.params.name_pattern
+            && !pat.is_empty()
+        {
+            match regex::Regex::new(pat) {
+                Ok(re) => {
+                    let before = jobs.len();
+                    jobs.retain(|j| re.is_match(&j.name));
+                    let after = jobs.len();
+                    if before != after && before > 0 {
+                        stats.push(format!(
+                            "name: {}/{} ({:.1}%)",
+                            after,
+                            before,
+                            (after as f64 / before as f64) * 100.0
+                        ));
                     }
-                    Err(e) => {
-                        self.flash(format!("Invalid name regex pattern: {}", e), 3);
-                    }
+                }
+                Err(e) => {
+                    self.flash(format!("Invalid name regex pattern: {}", e), 3);
                 }
             }
         }
@@ -458,17 +457,17 @@ impl Dashboard {
             }
 
             (KeyModifiers::SHIFT, KeyCode::Up) if self.script.visible => {
-                if self.table.retreat() {
-                    if let Some(j) = self.table.focused_job() {
-                        self.script.switch_job(j.job_id.clone(), j.name.clone());
-                    }
+                if self.table.retreat()
+                    && let Some(j) = self.table.focused_job()
+                {
+                    self.script.switch_job(j.job_id.clone(), j.name.clone());
                 }
             }
             (KeyModifiers::SHIFT, KeyCode::Down) if self.script.visible => {
-                if self.table.advance() {
-                    if let Some(j) = self.table.focused_job() {
-                        self.script.switch_job(j.job_id.clone(), j.name.clone());
-                    }
+                if self.table.advance()
+                    && let Some(j) = self.table.focused_job()
+                {
+                    self.script.switch_job(j.job_id.clone(), j.name.clone());
                 }
             }
             _ if self.script.visible => {
@@ -491,17 +490,17 @@ impl Dashboard {
             }
 
             (KeyModifiers::SHIFT, KeyCode::Up) if self.output.visible => {
-                if self.table.retreat() {
-                    if let Some(j) = self.table.focused_job() {
-                        self.output.switch_job(j.job_id.clone());
-                    }
+                if self.table.retreat()
+                    && let Some(j) = self.table.focused_job()
+                {
+                    self.output.switch_job(j.job_id.clone());
                 }
             }
             (KeyModifiers::SHIFT, KeyCode::Down) if self.output.visible => {
-                if self.table.advance() {
-                    if let Some(j) = self.table.focused_job() {
-                        self.output.switch_job(j.job_id.clone());
-                    }
+                if self.table.advance()
+                    && let Some(j) = self.table.focused_job()
+                {
+                    self.output.switch_job(j.job_id.clone());
                 }
             }
             _ if self.output.visible => {
@@ -542,10 +541,9 @@ impl Dashboard {
             && !self.script.visible
             && !self.field_sel.visible
             && self.refreshed_at.elapsed().as_secs() >= self.refresh_secs
+            && let Err(e) = self.reload_jobs()
         {
-            if let Err(e) = self.reload_jobs() {
-                self.flash(format!("Auto-refresh failed: {}", e), 3);
-            }
+            self.flash(format!("Auto-refresh failed: {}", e), 3);
         }
 
         if self.output.visible {

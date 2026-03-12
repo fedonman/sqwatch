@@ -59,10 +59,10 @@ impl InputLoop {
                             TermEvent::Resize(w, h) => Some(Signal::TermResize(w, h)),
                             _ => None,
                         };
-                        if let Some(sig) = signal {
-                            if sender.send(sig).is_err() {
-                                break;
-                            }
+                        if let Some(sig) = signal
+                            && sender.send(sig).is_err()
+                        {
+                            break;
                         }
                     }
 
