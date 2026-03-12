@@ -1,0 +1,74 @@
+name: Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version to release (e.g. 0.2.0)"
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  release:
+    name: Release
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Validate version format
+        run: |
+          if ! echo "${{ inputs.version }}" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+$'; then
+            echo "::error::Invalid version format. Use semver (e.g. 0.2.0)"
+            exit 1
+          fi
+
+      - name: Check CHANGELOG.md has entry for version
+        run: |
+          if ! grep -q "## \[${{ inputs.version }}\]" CHANGELOG.md; then
+            echo "::error::CHANGELOG.md does not contain an entry for version ${{ inputs.version }}."
+            echo "::error::Add a '## [${{ inputs.version }}] - YYYY-MM-DD' section before releasing."
+            exit 1
+          fi
+
+      - name: Check Cargo.toml version matches
+        run: |
+          CARGO_VERSION=$(grep -m1 '^version' Cargo.toml | sed 's/.*"\(.*\)"/\1/')
+          if [ "$CARGO_VERSION" != "${{ inputs.version }}" ]; then
+            echo "::error::Cargo.toml version ($CARGO_VERSION) does not match release version (${{ inputs.version }})."
+            exit 1
+          fi
+
+      - name: Run tests
+        run: cargo test
+
+      - name: Publish to crates.io
+        run: cargo publish
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+
+      - name: Extract changelog for this version
+        id: changelog
+        run: |
+          # Extract the section for this version from CHANGELOG.md
+          NOTES=$(awk '/^## \[${{ inputs.version }}\]/{found=1; next} /^## \[/{if(found) exit} found{print}' CHANGELOG.md)
+          # Write to file to preserve newlines
+          echo "$NOTES" > /tmp/release-notes.md
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ inputs.version }}
+          name: v${{ inputs.version }}
+          body_path: /tmp/release-notes.md
+          generate_release_notes: false
