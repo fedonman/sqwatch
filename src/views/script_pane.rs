@@ -1,4 +1,4 @@
-use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+use crossterm::event::{KeyCode, KeyEvent};
 use ratatui::{
     layout::Rect,
     style::{Color, Modifier, Style},
@@ -59,15 +59,6 @@ impl ScriptPane {
         }
     }
 
-    pub fn page_up(&mut self) {
-        self.scroll_pos = self.scroll_pos.saturating_sub(10);
-    }
-
-    pub fn page_down(&mut self) {
-        let max = self.body.lines().count() * 2;
-        self.scroll_pos = (self.scroll_pos + 10).min(max);
-    }
-
     pub fn render(&self, frame: &mut Frame, area: Rect) {
         if !self.visible {
             return;
@@ -80,7 +71,7 @@ impl ScriptPane {
 
         let title = format!("Job Script for {}/{}", label_str, id_str);
         let keys =
-            " [\u{2191}/\u{2193}] Scroll | [Ctrl+U/D] PageUp/Down | [Shift+\u{2191}/\u{2193}] Toggle Job| [q] Close ";
+            " [\u{2191}/\u{2193}] Scroll | [Shift+\u{2191}/\u{2193}] Toggle Job | [q] Close ";
 
         let display = self.build_display_text();
         let widget = Paragraph::new(display)
@@ -101,10 +92,6 @@ impl ScriptPane {
             (_, KeyCode::Char('q')) => self.hide(),
             (_, KeyCode::Up) => self.scroll_up(),
             (_, KeyCode::Down) => self.scroll_down(),
-            (_, KeyCode::PageUp) | (KeyModifiers::CONTROL, KeyCode::Char('u')) => self.page_up(),
-            (_, KeyCode::PageDown) | (KeyModifiers::CONTROL, KeyCode::Char('d')) => {
-                self.page_down()
-            }
             _ => {}
         }
     }
