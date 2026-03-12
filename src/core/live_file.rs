@@ -41,6 +41,7 @@ pub struct LiveFileMonitor {
 struct FileObserver {
     output: Sender<StreamResult>,
     inbox: Receiver<MonitorMsg>,
+    channel_back: Sender<MonitorMsg>,
     watched: Option<PathBuf>,
     poll_interval: Duration,
 }
@@ -58,11 +59,13 @@ impl FileObserver {
     fn create(
         output: Sender<StreamResult>,
         inbox: Receiver<MonitorMsg>,
+        channel_back: Sender<MonitorMsg>,
         poll_interval: Duration,
     ) -> Self {
         FileObserver {
             output,
             inbox,
+            channel_back,
             watched: None,
             poll_interval,
         }
@@ -108,6 +111,23 @@ impl FileObserver {
                                         thread::spawn(move || {
                                             IncrementalReader::create(tx, rx, p, interval)
                                                 .read_loop()
+                                        });
+                                    }
+                                    Err(_) if !p.exists() => {
+                                        // File doesn't exist yet (e.g. pending job).
+                                        // Poll until it appears, then set up the watch.
+                                        self.watched = Some(p.clone());
+                                        let interval = self.poll_interval;
+                                        let inbox_tx = self.channel_back.clone();
+                                        thread::spawn(move || {
+                                            loop {
+                                                thread::sleep(interval);
+                                                if p.exists() {
+                                                    let _ = inbox_tx
+                                                        .send(MonitorMsg::WatchPath(Some(p)));
+                                                    break;
+                                                }
+                                            }
                                         });
                                     }
                                     Err(e) => {
@@ -175,7 +195,7 @@ impl IncrementalReader {
 impl LiveFileMonitor {
     pub fn new(output: Sender<StreamResult>, poll_interval: Duration) -> Self {
         let (tx, rx) = unbounded();
-        let mut observer = FileObserver::create(output, rx, poll_interval);
+        let mut observer = FileObserver::create(output, rx, tx.clone(), poll_interval);
         thread::spawn(move || observer.event_loop());
 
         Self {
