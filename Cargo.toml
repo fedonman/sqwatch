@@ -6,7 +6,7 @@ description = "A terminal UI for watching and managing SLURM job queues."
 authors = ["Vyron Vasileiadis <hi@fedonman.com>"]
 repository = "https://github.com/fedonman/sqwatch"
 readme = "README.md"
-license = "MIT"
+license = "Apache-2.0"
 rust-version = "1.90"
 
 [dependencies]
