@@ -30,13 +30,16 @@ pub fn render_titlebar(
     let user_label = "User: ";
     let user_width = user_label.len() as u16 + username.len() as u16 + 2; // +2 for borders
 
+    let filter_label = "Filters: ";
+    let filter_width = filter_label.len() as u16 + filters.len() as u16 + 2; // +2 for borders
+
     let sections = Layout::default()
         .direction(Direction::Horizontal)
         .constraints([
             Constraint::Length(brand_width),
             Constraint::Length(user_width),
-            Constraint::Percentage(50),
-            Constraint::Percentage(50),
+            Constraint::Length(filter_width),
+            Constraint::Min(0),
         ])
         .split(area);
 
