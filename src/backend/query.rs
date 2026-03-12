@@ -62,6 +62,10 @@ impl QueryParams {
                 .join(",");
             args.push("--states".into());
             args.push(joined);
+        } else {
+            // Include all job states by default (squeue only shows PENDING/RUNNING otherwise)
+            args.push("--states".into());
+            args.push("all".into());
         }
 
         if !self.partitions.is_empty() {

@@ -15,6 +15,8 @@ pub enum JobState {
     NodeFail,
     Preempted,
     BootFail,
+    Suspended,
+    OutOfMemory,
     Unknown,
 }
 
@@ -30,6 +32,8 @@ impl JobState {
             JobState::NodeFail,
             JobState::Preempted,
             JobState::BootFail,
+            JobState::Suspended,
+            JobState::OutOfMemory,
         ]
     }
 }
@@ -46,6 +50,8 @@ impl fmt::Display for JobState {
             JobState::NodeFail => "NODE_FAIL",
             JobState::Preempted => "PREEMPTED",
             JobState::BootFail => "BOOT_FAIL",
+            JobState::Suspended => "SUSPENDED",
+            JobState::OutOfMemory => "OUT_OF_MEMORY",
             JobState::Unknown => "OTHER",
         };
         write!(f, "{}", label)
@@ -66,6 +72,8 @@ impl FromStr for JobState {
             "NODE_FAIL" | "NF" => Ok(JobState::NodeFail),
             "PREEMPTED" | "PR" => Ok(JobState::Preempted),
             "BOOT_FAIL" | "BF" => Ok(JobState::BootFail),
+            "SUSPENDED" | "S" => Ok(JobState::Suspended),
+            "OUT_OF_MEMORY" | "OOM" => Ok(JobState::OutOfMemory),
             _ => Ok(JobState::Unknown),
         }
     }
