@@ -79,7 +79,7 @@ impl JobField {
     pub fn width_hint(&self) -> Constraint {
         match self {
             JobField::Id => Constraint::Percentage(6),
-            JobField::Name => Constraint::Percentage(15),
+            JobField::Name => Constraint::Percentage(8),
             JobField::User => Constraint::Percentage(8),
             JobField::State => Constraint::Percentage(7),
             JobField::Partition => Constraint::Percentage(7),

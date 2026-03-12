@@ -166,15 +166,9 @@ impl JobTable {
                 ""
             };
 
-            let sty = if is_sorted {
-                Style::default()
-                    .fg(Color::Cyan)
-                    .add_modifier(Modifier::BOLD)
-            } else {
-                Style::default()
-                    .fg(Color::White)
-                    .add_modifier(Modifier::BOLD)
-            };
+            let sty = Style::default()
+                .fg(Color::White)
+                .add_modifier(Modifier::BOLD);
 
             Cell::from(format!("{}{}", f.heading(), indicator)).style(sty)
         });
