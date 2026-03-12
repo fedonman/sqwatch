@@ -177,7 +177,7 @@ impl OutputPane {
         };
 
         let keys =
-            " [\u{2191}/\u{2193}] Scroll | [Shift+\u{2191}/\u{2193}] Toggle Job | [o] Toggle stdout/stderr | [q] Close ";
+            " [\u{2191}/\u{2193}] Scroll | [Shift+\u{2191}/\u{2193}] Toggle Job | [o] Toggle stdout/stderr | [Esc] Close ";
 
         let display_text = match (self.fstate, self.content.is_empty()) {
             (FileState::Missing, _) => format!(
@@ -213,7 +213,6 @@ impl OutputPane {
     pub fn handle_key(&mut self, key: KeyEvent) {
         match (key.modifiers, key.code) {
             (_, KeyCode::Char('o')) => self.toggle_stream(),
-            (_, KeyCode::Char('q')) => self.hide(),
             (_, KeyCode::Up) => self.scroll_up(),
             (_, KeyCode::Down) => self.scroll_down(),
             (_, KeyCode::PageUp) | (KeyModifiers::CONTROL, KeyCode::Char('u')) => self.page_up(),

@@ -36,10 +36,6 @@ impl ScriptPane {
         self.visible = true;
     }
 
-    pub fn hide(&mut self) {
-        self.visible = false;
-    }
-
     pub fn switch_job(&mut self, id: String, label: String) {
         self.job_id = Some(id);
         self.job_name = Some(label);
@@ -71,7 +67,7 @@ impl ScriptPane {
 
         let title = format!("Job Script for {}/{}", label_str, id_str);
         let keys =
-            " [\u{2191}/\u{2193}] Scroll | [Shift+\u{2191}/\u{2193}] Toggle Job | [q] Close ";
+            " [\u{2191}/\u{2193}] Scroll | [Shift+\u{2191}/\u{2193}] Toggle Job | [Esc] Close ";
 
         let display = self.build_display_text();
         let widget = Paragraph::new(display)
@@ -89,7 +85,6 @@ impl ScriptPane {
 
     pub fn handle_key(&mut self, key: KeyEvent) {
         match (key.modifiers, key.code) {
-            (_, KeyCode::Char('q')) => self.hide(),
             (_, KeyCode::Up) => self.scroll_up(),
             (_, KeyCode::Down) => self.scroll_down(),
             _ => {}
