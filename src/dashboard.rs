@@ -26,7 +26,7 @@ use crate::{
         job_table::JobTable,
     },
     core::{
-        config::{load_filters, save_filters},
+        config::{load_columns, load_filters, save_columns, save_filters},
         current_user,
         input::{InputConfig, InputLoop, Signal},
     },
@@ -78,11 +78,15 @@ impl Dashboard {
         let known_nodes = rt.block_on(list_nodes());
         let known_states = JobState::all_known();
 
-        let visible_fields = JobField::defaults();
-        let sort_fields = vec![OrderedField {
-            field: JobField::Id,
-            direction: Ordering::Asc,
-        }];
+        let (visible_fields, sort_fields) = load_columns().unwrap_or_else(|| {
+            (
+                JobField::defaults(),
+                vec![OrderedField {
+                    field: JobField::Id,
+                    direction: Ordering::Asc,
+                }],
+            )
+        });
 
         Ok(Self {
             alive: true,
@@ -508,22 +512,18 @@ impl Dashboard {
                 match action {
                     FieldAction::Dismiss => self.field_sel.visible = false,
                     FieldAction::Confirm => {
-                        self.field_sel.visible = false;
                         self.visible_fields = self.field_sel.active.clone();
                         self.sort_fields = self.field_sel.sort_list.clone();
                         if let Err(e) = self.reload_jobs() {
                             self.flash(format!("Failed to refresh: {}", e), 3);
-                        } else {
-                            self.flash("Column settings applied".into(), 3);
                         }
                     }
-                    FieldAction::PersistAndConfirm => {
-                        self.field_sel.visible = false;
+                    FieldAction::Save => {
                         self.visible_fields = self.field_sel.active.clone();
                         self.sort_fields = self.field_sel.sort_list.clone();
-                        self.flash("Column settings saved and applied".into(), 3);
-                        if let Err(e) = self.reload_jobs() {
-                            self.flash(format!("Failed to refresh: {}", e), 3);
+                        match save_columns(&self.visible_fields, &self.sort_fields) {
+                            Ok(_) => self.flash("Column settings saved".into(), 3),
+                            Err(e) => self.flash(format!("Failed to save columns: {}", e), 3),
                         }
                     }
                     FieldAction::Noop => {}

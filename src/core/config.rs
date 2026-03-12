@@ -6,6 +6,7 @@ use std::{
 };
 
 use crate::backend::{query::QueryParams, JobState};
+use crate::views::fields::{JobField, OrderedField, Ordering};
 
 #[derive(Debug, Default, Serialize, Deserialize)]
 pub struct SavedFilters {
@@ -72,6 +73,95 @@ pub fn save_filters(params: &QueryParams) -> Result<(), String> {
         fs::create_dir_all(parent).map_err(|e| format!("Failed to create config dir: {}", e))?;
     }
     let saved = SavedFilters::from_params(params);
+    let json =
+        serde_json::to_string_pretty(&saved).map_err(|e| format!("Failed to serialize: {}", e))?;
+    fs::write(&path, json).map_err(|e| format!("Failed to write {}: {}", path.display(), e))
+}
+
+// --- Column settings persistence ---
+
+#[derive(Debug, Serialize, Deserialize)]
+pub(crate) struct SavedSort {
+    field: String,
+    direction: String,
+}
+
+#[derive(Debug, Default, Serialize, Deserialize)]
+pub struct SavedColumns {
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub columns: Vec<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub sort: Vec<SavedSort>,
+}
+
+impl SavedColumns {
+    pub fn from_fields(active: &[JobField], sort_list: &[OrderedField]) -> Self {
+        Self {
+            columns: active.iter().map(|f| f.heading().to_string()).collect(),
+            sort: sort_list
+                .iter()
+                .map(|of| SavedSort {
+                    field: of.field.heading().to_string(),
+                    direction: match of.direction {
+                        Ordering::Asc => "asc".to_string(),
+                        Ordering::Desc => "desc".to_string(),
+                    },
+                })
+                .collect(),
+        }
+    }
+
+    pub fn to_fields(&self) -> Option<(Vec<JobField>, Vec<OrderedField>)> {
+        let all = JobField::enumerate();
+        let lookup = |name: &str| -> Option<JobField> {
+            all.iter().find(|f| f.heading() == name).copied()
+        };
+
+        let columns: Vec<JobField> = self.columns.iter().filter_map(|n| lookup(n)).collect();
+        if columns.is_empty() {
+            return None;
+        }
+
+        let sort_list: Vec<OrderedField> = self
+            .sort
+            .iter()
+            .filter_map(|s| {
+                let field = lookup(&s.field)?;
+                let direction = match s.direction.as_str() {
+                    "desc" => Ordering::Desc,
+                    _ => Ordering::Asc,
+                };
+                Some(OrderedField { field, direction })
+            })
+            .collect();
+
+        Some((columns, sort_list))
+    }
+}
+
+fn columns_path() -> PathBuf {
+    let base = std::env::var("XDG_CONFIG_HOME")
+        .map(PathBuf::from)
+        .unwrap_or_else(|_| {
+            let home = std::env::var("HOME").unwrap_or_else(|_| ".".into());
+            PathBuf::from(home).join(".config")
+        });
+    base.join("sqwatch").join("columns.json")
+}
+
+pub fn load_columns() -> Option<(Vec<JobField>, Vec<OrderedField>)> {
+    let path = columns_path();
+    let data = fs::read_to_string(path).ok()?;
+    let saved: SavedColumns = serde_json::from_str(&data).ok()?;
+    saved.to_fields()
+}
+
+pub fn save_columns(active: &[JobField], sort_list: &[OrderedField]) -> Result<(), String> {
+    let path = columns_path();
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent).map_err(|e| format!("Failed to create config dir: {}", e))?;
+    }
+    let saved = SavedColumns::from_fields(active, sort_list);
     let json =
         serde_json::to_string_pretty(&saved).map_err(|e| format!("Failed to serialize: {}", e))?;
     fs::write(&path, json).map_err(|e| format!("Failed to write {}: {}", path.display(), e))

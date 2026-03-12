@@ -171,9 +171,6 @@ pub enum FieldFocus {
     Pool,
     Active,
     SortList,
-    BtnSave,
-    BtnApply,
-    BtnCancel,
 }
 
 pub struct FieldSelector {
@@ -323,15 +320,14 @@ impl FieldSelector {
                 "\u{2191}/\u{2193}: Navigate | \u{2190}/\u{2192}: Switch lists | Enter: Add to Selected"
             }
             FieldFocus::Active => {
-                "\u{2191}/\u{2193}: Navigate | \u{2190}/\u{2192}: Switch lists | Enter: Add to Sort | Del: Remove | Ctrl+\u{2191}/\u{2193}: Move up/down"
+                "\u{2191}/\u{2193}: Navigate | \u{2190}/\u{2192}: Switch lists | Enter: Add to Sort | Del: Remove | Shift+\u{2191}/\u{2193}: Move"
             }
             FieldFocus::SortList => {
-                "\u{2191}/\u{2193}: Navigate | \u{2190}/\u{2192}: Switch lists | Enter: Toggle order | Del: Remove | Ctrl+\u{2191}/\u{2193}: Move up/down"
+                "\u{2191}/\u{2193}: Navigate | \u{2190}/\u{2192}: Switch lists | Enter: Toggle order | Del: Remove | Shift+\u{2191}/\u{2193}: Move"
             }
-            _ => "",
         };
 
-        let full = format!("{} | Ctrl+a: Apply | Esc: Close", hint);
+        let full = format!("{} | r: Reset | Ctrl+s: Save | Esc: Close", hint);
         let widget = Paragraph::new(full)
             .style(Style::default().fg(Color::Gray))
             .block(Block::default().borders(Borders::ALL));
@@ -346,6 +342,13 @@ impl FieldSelector {
             KeyCode::Tab => {
                 self.rotate_focus();
                 return FieldAction::Noop;
+            }
+            KeyCode::Char('s') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+                return FieldAction::Save;
+            }
+            KeyCode::Char('r') => {
+                self.reset_to_defaults();
+                return FieldAction::Confirm;
             }
             KeyCode::Left => match self.focus {
                 FieldFocus::Active => {
@@ -373,9 +376,6 @@ impl FieldSelector {
                 }
                 _ => {}
             },
-            KeyCode::Char('a') if key.modifiers.contains(KeyModifiers::CONTROL) => {
-                return FieldAction::Confirm;
-            }
             _ => {}
         }
 
@@ -383,7 +383,6 @@ impl FieldSelector {
             FieldFocus::Pool => self.on_pool_key(key),
             FieldFocus::Active => self.on_active_key(key),
             FieldFocus::SortList => self.on_sort_key(key),
-            _ => self.on_button_key(key),
         }
     }
 
@@ -422,7 +421,7 @@ impl FieldSelector {
                         self.active_state.select(Some(self.active.len() - 1));
                     }
                 }
-                FieldAction::Noop
+                FieldAction::Confirm
             }
             _ => FieldAction::Noop,
         }
@@ -438,6 +437,8 @@ impl FieldSelector {
                     if cur > 0 {
                         if key.modifiers.contains(KeyModifiers::SHIFT) {
                             self.active.swap(cur, cur - 1);
+                            self.active_state.select(Some(cur - 1));
+                            return FieldAction::Confirm;
                         }
                         self.active_state.select(Some(cur - 1));
                     }
@@ -449,6 +450,8 @@ impl FieldSelector {
                     if cur < self.active.len().saturating_sub(1) {
                         if key.modifiers.contains(KeyModifiers::SHIFT) {
                             self.active.swap(cur, cur + 1);
+                            self.active_state.select(Some(cur + 1));
+                            return FieldAction::Confirm;
                         }
                         self.active_state.select(Some(cur + 1));
                     }
@@ -469,7 +472,7 @@ impl FieldSelector {
                         }
                     }
                 }
-                FieldAction::Noop
+                FieldAction::Confirm
             }
             KeyCode::Delete | KeyCode::Backspace => {
                 if let Some(cur) = self.active_state.selected() {
@@ -486,7 +489,7 @@ impl FieldSelector {
                         self.pool_state.select(Some(self.pool.len() - 1));
                     }
                 }
-                FieldAction::Noop
+                FieldAction::Confirm
             }
             _ => FieldAction::Noop,
         }
@@ -502,6 +505,8 @@ impl FieldSelector {
                     if cur > 0 {
                         if key.modifiers.contains(KeyModifiers::SHIFT) {
                             self.sort_list.swap(cur, cur - 1);
+                            self.sort_state.select(Some(cur - 1));
+                            return FieldAction::Confirm;
                         }
                         self.sort_state.select(Some(cur - 1));
                     }
@@ -513,6 +518,8 @@ impl FieldSelector {
                     if cur < self.sort_list.len().saturating_sub(1) {
                         if key.modifiers.contains(KeyModifiers::SHIFT) {
                             self.sort_list.swap(cur, cur + 1);
+                            self.sort_state.select(Some(cur + 1));
+                            return FieldAction::Confirm;
                         }
                         self.sort_state.select(Some(cur + 1));
                     }
@@ -525,7 +532,7 @@ impl FieldSelector {
                         self.sort_list[cur].direction = self.sort_list[cur].direction.flip();
                     }
                 }
-                FieldAction::Noop
+                FieldAction::Confirm
             }
             KeyCode::Delete | KeyCode::Backspace => {
                 if let Some(cur) = self.sort_state.selected() {
@@ -538,19 +545,8 @@ impl FieldSelector {
                         }
                     }
                 }
-                FieldAction::Noop
+                FieldAction::Confirm
             }
-            _ => FieldAction::Noop,
-        }
-    }
-
-    fn on_button_key(&mut self, key: crossterm::event::KeyEvent) -> FieldAction {
-        use crossterm::event::KeyCode;
-
-        match (self.focus, key.code) {
-            (FieldFocus::BtnSave, KeyCode::Enter) => FieldAction::PersistAndConfirm,
-            (FieldFocus::BtnApply, KeyCode::Enter) => FieldAction::Confirm,
-            (FieldFocus::BtnCancel, KeyCode::Enter) => FieldAction::Dismiss,
             _ => FieldAction::Noop,
         }
     }
@@ -559,12 +555,25 @@ impl FieldSelector {
         self.focus = match self.focus {
             FieldFocus::Pool => FieldFocus::Active,
             FieldFocus::Active => FieldFocus::SortList,
-            FieldFocus::SortList => FieldFocus::BtnSave,
-            FieldFocus::BtnSave => FieldFocus::BtnApply,
-            FieldFocus::BtnApply => FieldFocus::BtnCancel,
-            FieldFocus::BtnCancel => FieldFocus::Pool,
+            FieldFocus::SortList => FieldFocus::Pool,
         };
         self.ensure_selection();
+    }
+
+    fn reset_to_defaults(&mut self) {
+        self.active = JobField::defaults();
+        self.sort_list = vec![OrderedField {
+            field: JobField::Id,
+            direction: Ordering::Asc,
+        }];
+
+        let mut pool = JobField::enumerate();
+        pool.retain(|f| !self.active.contains(f));
+        self.pool = pool;
+
+        self.pool_state.select(if self.pool.is_empty() { None } else { Some(0) });
+        self.active_state.select(Some(0));
+        self.sort_state.select(Some(0));
     }
 
     fn ensure_selection(&mut self) {
@@ -591,5 +600,5 @@ pub enum FieldAction {
     Noop,
     Dismiss,
     Confirm,
-    PersistAndConfirm,
+    Save,
 }
