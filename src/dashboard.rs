@@ -51,6 +51,7 @@ pub struct Dashboard {
     pub known_states: Vec<JobState>,
     pub visible_fields: Vec<JobField>,
     pub sort_fields: Vec<OrderedField>,
+    pub login_user: String,
     confirming_cancel: bool,
 }
 
@@ -103,6 +104,7 @@ impl Dashboard {
             known_states,
             visible_fields,
             sort_fields,
+            login_user: std::env::var("USER").unwrap_or_else(|_| "unknown".to_string()),
             confirming_cancel: false,
         })
     }
@@ -285,7 +287,8 @@ impl Dashboard {
         render_titlebar(
             frame,
             area,
-            &info
+            &info,
+            &self.login_user,
         );
     }
 

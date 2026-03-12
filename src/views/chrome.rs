@@ -22,12 +22,18 @@ pub fn build_frame(frame: &mut Frame) -> Vec<Rect> {
 pub fn render_titlebar(
     frame: &mut Frame,
     area: Rect,
-    info: &str
+    info: &str,
+    username: &str,
 ) {
-    let brand_width = "sqwatch - SLURM Queue Watcher".len() as u16 + 2; // +2 for borders
-    let halves = Layout::default()
+    let brand_width = "sqwatch - SLURM Queue Watcher".len() as u16 + 2;
+    let user_width = username.len() as u16 + 2; // +2 for borders
+    let sections = Layout::default()
         .direction(Direction::Horizontal)
-        .constraints([Constraint::Length(brand_width), Constraint::Min(0)])
+        .constraints([
+            Constraint::Length(brand_width),
+            Constraint::Length(user_width),
+            Constraint::Min(0),
+        ])
         .split(area);
 
     let brand = Paragraph::new(Text::from(vec![Line::from(vec![
@@ -37,13 +43,18 @@ pub fn render_titlebar(
     ])]))
     .block(Block::default().borders(Borders::ALL));
 
-    frame.render_widget(brand, halves[0]);
+    frame.render_widget(brand, sections[0]);
+
+    let user_box = Paragraph::new(Span::styled(username, Style::default().fg(Color::Yellow)))
+        .block(Block::default().borders(Borders::ALL));
+
+    frame.render_widget(user_box, sections[1]);
 
     let status_bar = Paragraph::new(info)
         .block(Block::default().borders(Borders::ALL))
         .style(Style::default());
 
-    frame.render_widget(status_bar, halves[1]);
+    frame.render_widget(status_bar, sections[2]);
 }
 
 pub fn render_statusbar(frame: &mut Frame, area: Rect, counts: (usize, usize, usize)) {
