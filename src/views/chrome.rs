@@ -86,7 +86,7 @@ pub fn render_statusbar(frame: &mut Frame, area: Rect, counts: (usize, usize, us
         ("f", "Toggle Filters"),
         ("c", "Toggle Columns"),
         ("v", "Inspect Logs"),
-        ("Enter", "Inspect Script"),
+        ("s", "Inspect Script"),
         // ("a", "SelectAll"),
         // ("x", "Cancel"),
     ];

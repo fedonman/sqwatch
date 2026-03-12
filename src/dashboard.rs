@@ -446,7 +446,7 @@ impl Dashboard {
                 }
             }
 
-            (_, KeyCode::Enter)
+            (_, KeyCode::Char('s'))
                 if !self.search_dlg.visible
                     && !self.script.visible
                     && !self.field_sel.visible
