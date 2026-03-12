@@ -135,7 +135,7 @@ impl SearchDialog {
         self.draw_partition_list(frame, triple[1], params, all_partitions);
         self.draw_qos_list(frame, triple[2], params, all_qos);
 
-        let hint = "\u{2191}/\u{2193}: Navigate | \u{2190}/\u{2192}: Switch Filters | Enter: Select/Apply | Esc: Close";
+        let hint = "\u{2190}/\u{2192}: Switch Filters | \u{2191}/\u{2193}: Navigate | Enter: Select/Apply | Esc: Close";
         let help = Paragraph::new(hint)
             .style(Style::default().fg(Color::Gray))
             .block(Block::default().borders(Borders::ALL));
