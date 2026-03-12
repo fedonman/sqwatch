@@ -550,7 +550,6 @@ impl Dashboard {
     }
 
     fn apply_search(&mut self) -> Result<()> {
-        self.search_dlg.visible = false;
         self.flash("Applying filters...".into(), 3);
 
         let result = self.reload_jobs();
