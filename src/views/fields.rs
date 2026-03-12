@@ -1,10 +1,10 @@
 use crossterm::event::KeyModifiers;
 use ratatui::{
+    Frame,
     layout::{Constraint, Direction, Layout, Rect},
     style::{Color, Modifier, Style},
     text::Line,
     widgets::{Block, Borders, Clear, List, ListItem, ListState, Paragraph},
-    Frame,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -302,9 +302,7 @@ impl FieldSelector {
         let sort_items: Vec<ListItem> = self
             .sort_list
             .iter()
-            .map(|of| {
-                ListItem::new(format!("{} {}", of.field.heading(), of.direction.arrow()))
-            })
+            .map(|of| ListItem::new(format!("{} {}", of.field.heading(), of.direction.arrow())))
             .collect();
 
         let sort_list_widget = List::new(sort_items)
@@ -575,7 +573,8 @@ impl FieldSelector {
         pool.retain(|f| !self.active.contains(f));
         self.pool = pool;
 
-        self.pool_state.select(if self.pool.is_empty() { None } else { Some(0) });
+        self.pool_state
+            .select(if self.pool.is_empty() { None } else { Some(0) });
         self.active_state.select(Some(0));
         self.sort_state.select(Some(0));
     }

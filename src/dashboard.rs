@@ -1,32 +1,32 @@
 use color_eyre::Result;
 use crossterm::event::{KeyCode, KeyEvent, KeyEventKind, KeyModifiers, MouseEvent};
 use ratatui::{
+    Frame,
     layout::Rect,
     style::{Color, Style},
     text::Line,
     widgets::{Block, Borders, Clear, Paragraph},
-    Frame,
 };
 use std::time::{Duration, Instant};
 use tokio::runtime::Runtime;
 
 use crate::{
     backend::{
-        commands::{cancel_jobs, check_slurm_available, list_nodes, list_partitions, list_qos},
-        query::{fetch_jobs, QueryParams},
         JobState,
-    },
-    views::{
-        chrome::{build_frame, popup_rect, render_statusbar, render_titlebar},
-        fields::{FieldAction, FieldSelector, JobField, Ordering, OrderedField},
-        output_pane::OutputPane,
-        script_pane::ScriptPane,
-        search::{SearchAction, SearchDialog},
-        job_table::JobTable,
+        commands::{cancel_jobs, check_slurm_available, list_nodes, list_partitions, list_qos},
+        query::{QueryParams, fetch_jobs},
     },
     core::{
         config::{load_columns, load_filters, save_columns, save_filters},
         input::{InputConfig, InputLoop, Signal},
+    },
+    views::{
+        chrome::{build_frame, popup_rect, render_statusbar, render_titlebar},
+        fields::{FieldAction, FieldSelector, JobField, OrderedField, Ordering},
+        job_table::JobTable,
+        output_pane::OutputPane,
+        script_pane::ScriptPane,
+        search::{SearchAction, SearchDialog},
     },
 };
 
@@ -180,7 +180,6 @@ impl Dashboard {
             }
         }
 
-
         if !stats.is_empty() {
             let remaining = jobs.len();
             let pct = if total > 0 {
@@ -285,13 +284,7 @@ impl Dashboard {
             None
         };
 
-        render_titlebar(
-            frame,
-            area,
-            &filters,
-            &self.login_user,
-            flash,
-        );
+        render_titlebar(frame, area, &filters, &self.login_user, flash);
     }
 
     fn draw_cancel_confirm(&self, frame: &mut Frame, area: Rect) {
@@ -341,9 +334,7 @@ impl Dashboard {
                 }
             }
 
-            (_, KeyCode::Char('f'))
-                if !self.script.visible && !self.search_dlg.visible =>
-            {
+            (_, KeyCode::Char('f')) if !self.script.visible && !self.search_dlg.visible => {
                 self.search_dlg.visible = true;
                 self.search_dlg.load_from(&self.params);
             }
@@ -366,16 +357,12 @@ impl Dashboard {
             }
 
             (_, KeyCode::Char(' '))
-                if !self.search_dlg.visible
-                    && !self.script.visible
-                    && !self.field_sel.visible =>
+                if !self.search_dlg.visible && !self.script.visible && !self.field_sel.visible =>
             {
                 self.table.flip_selection();
             }
             (_, KeyCode::Char('a'))
-                if !self.search_dlg.visible
-                    && !self.script.visible
-                    && !self.field_sel.visible =>
+                if !self.search_dlg.visible && !self.script.visible && !self.field_sel.visible =>
             {
                 if self.table.everything_marked() {
                     self.table.unmark_all();
@@ -384,9 +371,7 @@ impl Dashboard {
                 }
             }
             (_, KeyCode::Char('x'))
-                if !self.search_dlg.visible
-                    && !self.script.visible
-                    && !self.field_sel.visible =>
+                if !self.search_dlg.visible && !self.script.visible && !self.field_sel.visible =>
             {
                 self.confirming_cancel = true;
             }
@@ -435,12 +420,10 @@ impl Dashboard {
                             self.flash(format!("Failed to apply filters: {}", e), 3);
                         }
                     }
-                    SearchAction::Save => {
-                        match save_filters(&self.params) {
-                            Ok(_) => self.flash("Filter settings saved".into(), 3),
-                            Err(e) => self.flash(format!("Failed to save filters: {}", e), 3),
-                        }
-                    }
+                    SearchAction::Save => match save_filters(&self.params) {
+                        Ok(_) => self.flash("Filter settings saved".into(), 3),
+                        Err(e) => self.flash(format!("Failed to save filters: {}", e), 3),
+                    },
                     SearchAction::Noop => {}
                 }
             }
@@ -570,7 +553,10 @@ impl Dashboard {
             let desc = self.filter_summary();
             let count = self.table.jobs.len();
             if !desc.is_empty() && desc != "No filters applied" {
-                self.flash(format!("Filters applied: {} ({} jobs shown)", desc, count), 3);
+                self.flash(
+                    format!("Filters applied: {} ({} jobs shown)", desc, count),
+                    3,
+                );
             } else {
                 self.flash(format!("Filters cleared ({} jobs shown)", count), 3);
             }
@@ -652,9 +638,7 @@ impl Dashboard {
                 let idx = self
                     .visible_fields
                     .iter()
-                    .position(|f| {
-                        std::mem::discriminant(f) == std::mem::discriminant(&first.field)
-                    })
+                    .position(|f| std::mem::discriminant(f) == std::mem::discriminant(&first.field))
                     .unwrap_or(0);
                 self.table.primary_sort_col = idx;
                 self.table.sort_asc = matches!(first.direction, Ordering::Asc);

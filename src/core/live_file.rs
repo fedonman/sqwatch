@@ -8,10 +8,10 @@ use std::{
 };
 
 use crossbeam::{
-    channel::{unbounded, Receiver, RecvError, SendError, Sender},
+    channel::{Receiver, RecvError, SendError, Sender, unbounded},
     select,
 };
-use notify::{event::ModifyKind, RecursiveMode, Watcher};
+use notify::{RecursiveMode, Watcher, event::ModifyKind};
 
 type StreamResult = Result<String, MonitorError>;
 
@@ -73,14 +73,13 @@ impl FileObserver {
 
     fn event_loop(&mut self) -> Result<(), RecvError> {
         let (fs_tx, fs_rx) = unbounded();
-        let mut watcher =
-            notify::recommended_watcher(move |res: notify::Result<notify::Event>| {
-                let ev = res.unwrap();
-                if let notify::EventKind::Modify(ModifyKind::Data(_)) = ev.kind {
-                    fs_tx.send(ev.paths).unwrap();
-                }
-            })
-            .unwrap();
+        let mut watcher = notify::recommended_watcher(move |res: notify::Result<notify::Event>| {
+            let ev = res.unwrap();
+            if let notify::EventKind::Modify(ModifyKind::Data(_)) = ev.kind {
+                fs_tx.send(ev.paths).unwrap();
+            }
+        })
+        .unwrap();
 
         let (mut content_tx, mut content_rx) = unbounded::<io::Result<String>>();
         let (mut notify_tx, mut notify_rx) = unbounded::<()>();

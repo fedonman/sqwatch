@@ -1,11 +1,7 @@
 use serde::{Deserialize, Serialize};
-use std::{
-    fs,
-    path::PathBuf,
-    str::FromStr,
-};
+use std::{fs, path::PathBuf, str::FromStr};
 
-use crate::backend::{query::QueryParams, JobState};
+use crate::backend::{JobState, query::QueryParams};
 use crate::views::fields::{JobField, OrderedField, Ordering};
 
 #[derive(Debug, Default, Serialize, Deserialize)]
@@ -113,9 +109,8 @@ impl SavedColumns {
 
     pub fn to_fields(&self) -> Option<(Vec<JobField>, Vec<OrderedField>)> {
         let all = JobField::enumerate();
-        let lookup = |name: &str| -> Option<JobField> {
-            all.iter().find(|f| f.heading() == name).copied()
-        };
+        let lookup =
+            |name: &str| -> Option<JobField> { all.iter().find(|f| f.heading() == name).copied() };
 
         let columns: Vec<JobField> = self.columns.iter().filter_map(|n| lookup(n)).collect();
         if columns.is_empty() {

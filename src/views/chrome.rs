@@ -1,9 +1,9 @@
 use ratatui::{
+    Frame,
     layout::{Constraint, Direction, Layout, Rect},
     style::{Color, Style},
     text::{Line, Span, Text},
     widgets::{Block, Borders, Paragraph},
-    Frame,
 };
 
 pub fn build_frame(frame: &mut Frame) -> Vec<Rect> {
@@ -69,9 +69,10 @@ pub fn render_titlebar(
     frame.render_widget(filter_bar, sections[2]);
 
     let flash_content = flash.unwrap_or("");
-    let flash_bar = Paragraph::new(Line::from(vec![
-        Span::styled(flash_content, Style::default().fg(Color::Yellow)),
-    ]))
+    let flash_bar = Paragraph::new(Line::from(vec![Span::styled(
+        flash_content,
+        Style::default().fg(Color::Yellow),
+    )]))
     .block(Block::default().borders(Borders::ALL));
 
     frame.render_widget(flash_bar, sections[3]);
@@ -128,12 +129,12 @@ pub fn render_statusbar(frame: &mut Frame, area: Rect, counts: (usize, usize, us
         .constraints([Constraint::Min(0), Constraint::Length(stat_width)])
         .split(area);
 
-    let keys_bar = Paragraph::new(Line::from(key_spans))
-        .block(Block::default().borders(Borders::ALL));
+    let keys_bar =
+        Paragraph::new(Line::from(key_spans)).block(Block::default().borders(Borders::ALL));
     frame.render_widget(keys_bar, sections[0]);
 
-    let stat_bar = Paragraph::new(Line::from(stat_spans))
-        .block(Block::default().borders(Borders::ALL));
+    let stat_bar =
+        Paragraph::new(Line::from(stat_spans)).block(Block::default().borders(Borders::ALL));
     frame.render_widget(stat_bar, sections[1]);
 }
 

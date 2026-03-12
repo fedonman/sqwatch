@@ -1,6 +1,6 @@
 use async_process::{Command, Output};
-use color_eyre::eyre::Error;
 use color_eyre::Result;
+use color_eyre::eyre::Error;
 use std::collections::HashMap;
 use std::str::FromStr;
 
@@ -167,10 +167,7 @@ fn decode_output(output: &Output, fmt: &str) -> Result<Vec<Job>> {
                 "%i" | "%A" => job.job_id = val,
                 "%j" => job.name = val,
                 "%u" => job.user = val,
-                "%T" => {
-                    job.state =
-                        JobState::from_str(&val).unwrap_or(JobState::Unknown)
-                }
+                "%T" => job.state = JobState::from_str(&val).unwrap_or(JobState::Unknown),
                 "%M" => job.time = val,
                 "%D" => job.num_nodes = val.parse().unwrap_or(0),
                 "%N" => job.nodelist = Some(val),

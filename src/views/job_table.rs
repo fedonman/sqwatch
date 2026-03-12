@@ -1,8 +1,8 @@
 use ratatui::{
+    Frame,
     layout::{Constraint, Rect},
     style::{Color, Modifier, Style},
     widgets::{Block, Borders, Cell, Paragraph, Row, Table, TableState},
-    Frame,
 };
 
 use crate::backend::{Job, JobState};
@@ -152,7 +152,9 @@ impl JobTable {
         }
 
         let header_cells = visible.iter().map(|f| {
-            let is_sorted = sort_fields.iter().any(|of| of.field.heading() == f.heading());
+            let is_sorted = sort_fields
+                .iter()
+                .any(|of| of.field.heading() == f.heading());
             let indicator = if is_sorted {
                 sort_fields
                     .iter()
@@ -182,9 +184,7 @@ impl JobTable {
             let tint = state_color(job.state);
 
             let row_style = if is_marked {
-                Style::default()
-                    .fg(tint)
-                    .add_modifier(Modifier::REVERSED)
+                Style::default().fg(tint).add_modifier(Modifier::REVERSED)
             } else {
                 Style::default().fg(tint)
             };
@@ -206,35 +206,22 @@ impl JobTable {
                         JobField::Partition => job.partition.clone(),
                         JobField::QoS => job.qos.clone(),
                         JobField::Nodes => job.num_nodes.to_string(),
-                        JobField::Node => {
-                            job.nodelist.clone().unwrap_or_else(|| "-".into())
-                        }
+                        JobField::Node => job.nodelist.clone().unwrap_or_else(|| "-".into()),
                         JobField::CPUs => job.num_cpus.to_string(),
                         JobField::Time => job.time.clone(),
                         JobField::Memory => job.min_memory.clone(),
-                        JobField::Account => {
-                            job.account.clone().unwrap_or_else(|| "-".into())
-                        }
+                        JobField::Account => job.account.clone().unwrap_or_else(|| "-".into()),
                         JobField::Priority => job
                             .priority
                             .map(|p| p.to_string())
                             .unwrap_or_else(|| "-".into()),
-                        JobField::WorkDir => {
-                            job.work_dir.clone().unwrap_or_else(|| "-".into())
-                        }
+                        JobField::WorkDir => job.work_dir.clone().unwrap_or_else(|| "-".into()),
                         JobField::SubmitTime => {
                             job.submit_time.clone().unwrap_or_else(|| "-".into())
                         }
-                        JobField::StartTime => {
-                            job.start_time.clone().unwrap_or_else(|| "-".into())
-                        }
-                        JobField::EndTime => {
-                            job.end_time.clone().unwrap_or_else(|| "-".into())
-                        }
-                        JobField::PendReason => job
-                            .reason
-                            .clone()
-                            .unwrap_or_else(|| "-".into()),
+                        JobField::StartTime => job.start_time.clone().unwrap_or_else(|| "-".into()),
+                        JobField::EndTime => job.end_time.clone().unwrap_or_else(|| "-".into()),
+                        JobField::PendReason => job.reason.clone().unwrap_or_else(|| "-".into()),
                     };
                     Cell::from(txt)
                 })

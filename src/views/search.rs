@@ -1,14 +1,14 @@
 use crossterm::event::KeyModifiers;
 use ratatui::{
+    Frame,
     layout::{Constraint, Direction, Layout, Position, Rect},
     style::{Color, Modifier, Style},
     text::Line,
     widgets::{Block, Borders, Clear, List, ListItem, ListState, Paragraph},
-    Frame,
 };
 use regex::Regex;
 
-use crate::backend::{query::QueryParams, JobState};
+use crate::backend::{JobState, query::QueryParams};
 
 pub struct SearchDialog {
     pub tab_idx: usize,
@@ -151,10 +151,7 @@ impl SearchDialog {
         let cells = Layout::default()
             .direction(Direction::Horizontal)
             .margin(1)
-            .constraints([
-                Constraint::Ratio(1, 2),
-                Constraint::Ratio(1, 2),
-            ])
+            .constraints([Constraint::Ratio(1, 2), Constraint::Ratio(1, 2)])
             .split(area);
 
         // Username
@@ -318,14 +315,13 @@ impl SearchDialog {
         params: &QueryParams,
         choices: &[String],
     ) {
-        let block = Block::default()
-            .title("Nodes")
-            .borders(Borders::ALL)
-            .style(if self.focus == SearchFocus::Nodes {
+        let block = Block::default().title("Nodes").borders(Borders::ALL).style(
+            if self.focus == SearchFocus::Nodes {
                 Style::default().fg(Color::Cyan)
             } else {
                 Style::default()
-            });
+            },
+        );
 
         let items: Vec<ListItem> = choices
             .iter()
@@ -446,11 +442,21 @@ impl SearchDialog {
                 }
             },
             KeyCode::Up => {
-                self.navigate_list_up(all_statuses.len(), all_partitions.len(), all_qos.len(), all_nodes.len());
+                self.navigate_list_up(
+                    all_statuses.len(),
+                    all_partitions.len(),
+                    all_qos.len(),
+                    all_nodes.len(),
+                );
                 SearchAction::Noop
             }
             KeyCode::Down => {
-                self.navigate_list_down(all_statuses.len(), all_partitions.len(), all_qos.len(), all_nodes.len());
+                self.navigate_list_down(
+                    all_statuses.len(),
+                    all_partitions.len(),
+                    all_qos.len(),
+                    all_nodes.len(),
+                );
                 SearchAction::Noop
             }
             KeyCode::Left => {
@@ -479,48 +485,86 @@ impl SearchDialog {
         match self.focus {
             SearchFocus::States => {
                 let cur = self.status_cursor.selected().unwrap_or(0);
-                let next = if cur == 0 { n_states.saturating_sub(1) } else { cur - 1 };
+                let next = if cur == 0 {
+                    n_states.saturating_sub(1)
+                } else {
+                    cur - 1
+                };
                 self.status_cursor.select(Some(next));
             }
             SearchFocus::Partitions => {
                 let cur = self.partition_cursor.selected().unwrap_or(0);
-                let next = if cur == 0 { n_parts.saturating_sub(1) } else { cur - 1 };
+                let next = if cur == 0 {
+                    n_parts.saturating_sub(1)
+                } else {
+                    cur - 1
+                };
                 self.partition_cursor.select(Some(next));
             }
             SearchFocus::QoS => {
                 let cur = self.qos_cursor.selected().unwrap_or(0);
-                let next = if cur == 0 { n_qos.saturating_sub(1) } else { cur - 1 };
+                let next = if cur == 0 {
+                    n_qos.saturating_sub(1)
+                } else {
+                    cur - 1
+                };
                 self.qos_cursor.select(Some(next));
             }
             SearchFocus::Nodes => {
                 let cur = self.node_cursor.selected().unwrap_or(0);
-                let next = if cur == 0 { n_nodes.saturating_sub(1) } else { cur - 1 };
+                let next = if cur == 0 {
+                    n_nodes.saturating_sub(1)
+                } else {
+                    cur - 1
+                };
                 self.node_cursor.select(Some(next));
             }
             _ => {}
         }
     }
 
-    fn navigate_list_down(&mut self, n_states: usize, n_parts: usize, n_qos: usize, n_nodes: usize) {
+    fn navigate_list_down(
+        &mut self,
+        n_states: usize,
+        n_parts: usize,
+        n_qos: usize,
+        n_nodes: usize,
+    ) {
         match self.focus {
             SearchFocus::States => {
                 let cur = self.status_cursor.selected().unwrap_or(0);
-                let next = if n_states == 0 || cur >= n_states - 1 { 0 } else { cur + 1 };
+                let next = if n_states == 0 || cur >= n_states - 1 {
+                    0
+                } else {
+                    cur + 1
+                };
                 self.status_cursor.select(Some(next));
             }
             SearchFocus::Partitions => {
                 let cur = self.partition_cursor.selected().unwrap_or(0);
-                let next = if n_parts == 0 || cur >= n_parts - 1 { 0 } else { cur + 1 };
+                let next = if n_parts == 0 || cur >= n_parts - 1 {
+                    0
+                } else {
+                    cur + 1
+                };
                 self.partition_cursor.select(Some(next));
             }
             SearchFocus::QoS => {
                 let cur = self.qos_cursor.selected().unwrap_or(0);
-                let next = if n_qos == 0 || cur >= n_qos - 1 { 0 } else { cur + 1 };
+                let next = if n_qos == 0 || cur >= n_qos - 1 {
+                    0
+                } else {
+                    cur + 1
+                };
                 self.qos_cursor.select(Some(next));
             }
             SearchFocus::Nodes => {
                 let cur = self.node_cursor.selected().unwrap_or(0);
-                let next = if n_nodes == 0 || cur >= n_nodes - 1 { 0 } else { cur + 1 };
+                let next = if n_nodes == 0 || cur >= n_nodes - 1 {
+                    0
+                } else {
+                    cur + 1
+                };
                 self.node_cursor.select(Some(next));
             }
             _ => {}

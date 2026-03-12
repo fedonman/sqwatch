@@ -1,12 +1,12 @@
 use color_eyre::Result;
-use crossbeam::channel::{unbounded, Receiver};
+use crossbeam::channel::{Receiver, unbounded};
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use ratatui::{
+    Frame,
     layout::Rect,
     style::{Color, Modifier, Style},
     text::{Line, Span, Text},
     widgets::{Block, Borders, Clear, Paragraph, Wrap},
-    Frame,
 };
 use std::{collections::HashMap, iter::once, path::PathBuf, process::Command, time::Duration};
 
@@ -176,8 +176,7 @@ impl OutputPane {
             None => format!("Log View - {}", self.stream.label()),
         };
 
-        let keys =
-            " [\u{2191}/\u{2193}] Scroll | [Shift+\u{2191}/\u{2193}] Toggle Job | [o] Toggle stdout/stderr | [Esc] Close ";
+        let keys = " [\u{2191}/\u{2193}] Scroll | [Shift+\u{2191}/\u{2193}] Toggle Job | [o] Toggle stdout/stderr | [Esc] Close ";
 
         let display_text = match (self.fstate, self.content.is_empty()) {
             (FileState::Missing, _) => format!(
@@ -319,14 +318,8 @@ impl OutputPane {
         self.stderr_file = kv.get("StdErr").cloned();
 
         let has_current = match self.stream {
-            StreamKind::Stdout => self
-                .stdout_file
-                .as_ref()
-                .is_some_and(|p| !p.is_empty()),
-            StreamKind::Stderr => self
-                .stderr_file
-                .as_ref()
-                .is_some_and(|p| !p.is_empty()),
+            StreamKind::Stdout => self.stdout_file.as_ref().is_some_and(|p| !p.is_empty()),
+            StreamKind::Stderr => self.stderr_file.as_ref().is_some_and(|p| !p.is_empty()),
         };
 
         self.fstate = if has_current {

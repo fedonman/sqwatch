@@ -80,7 +80,11 @@ pub async fn list_partitions() -> Vec<String> {
 }
 
 pub async fn list_nodes() -> Vec<String> {
-    let out = match run_cmd("sinfo", vec!["-h".into(), "-N".into(), "-o".into(), "%N".into()]).await
+    let out = match run_cmd(
+        "sinfo",
+        vec!["-h".into(), "-N".into(), "-o".into(), "%N".into()],
+    )
+    .await
     {
         Ok(o) => o,
         Err(_) => return Vec::new(),
