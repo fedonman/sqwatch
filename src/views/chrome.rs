@@ -26,7 +26,8 @@ pub fn render_titlebar(
     username: &str,
 ) {
     let brand_width = "sqwatch - SLURM Queue Watcher".len() as u16 + 2;
-    let user_width = username.len() as u16 + 2; // +2 for borders
+    let user_label = "User: ";
+    let user_width = user_label.len() as u16 + username.len() as u16 + 2; // +2 for borders
     let sections = Layout::default()
         .direction(Direction::Horizontal)
         .constraints([
@@ -45,14 +46,19 @@ pub fn render_titlebar(
 
     frame.render_widget(brand, sections[0]);
 
-    let user_box = Paragraph::new(Span::styled(username, Style::default().fg(Color::Yellow)))
-        .block(Block::default().borders(Borders::ALL));
+    let user_box = Paragraph::new(Line::from(vec![
+        Span::styled(user_label, Style::default().fg(Color::White)),
+        Span::styled(username, Style::default().fg(Color::Yellow)),
+    ]))
+    .block(Block::default().borders(Borders::ALL));
 
     frame.render_widget(user_box, sections[1]);
 
-    let status_bar = Paragraph::new(info)
-        .block(Block::default().borders(Borders::ALL))
-        .style(Style::default());
+    let status_bar = Paragraph::new(Line::from(vec![
+        Span::styled("Filters: ", Style::default().fg(Color::White)),
+        Span::raw(info),
+    ]))
+    .block(Block::default().borders(Borders::ALL));
 
     frame.render_widget(status_bar, sections[2]);
 }
