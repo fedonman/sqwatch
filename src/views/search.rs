@@ -178,9 +178,9 @@ impl SearchDialog {
 
         // Name pattern
         let n_title = match self.name_ok {
-            Some(true) => "Job Name Filter (regex) \u{2713}",
-            Some(false) => "Job Name Filter (regex) \u{2717} Invalid",
-            None => "Job Name Filter (regex)",
+            Some(true) => "Job Name (regex) \u{2713}",
+            Some(false) => "Job Name (regex) \u{2717} Invalid",
+            None => "Job Name (regex)",
         };
         let n_style = match (self.focus == SearchFocus::NamePattern, self.name_ok) {
             (true, _) => Style::default().fg(Color::Cyan),
