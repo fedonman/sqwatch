@@ -327,7 +327,7 @@ impl FieldSelector {
             }
         };
 
-        let full = format!("{} | r: Reset | Ctrl+s: Save | Esc: Close", hint);
+        let full = format!("{} | r: Reset | Ctrl+S: Save | Esc: Close", hint);
         let widget = Paragraph::new(full)
             .style(Style::default().fg(Color::Gray))
             .block(Block::default().borders(Borders::ALL));

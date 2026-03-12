@@ -80,7 +80,7 @@ impl ScriptPane {
 
         let title = format!("Job Script for {}/{}", label_str, id_str);
         let keys =
-            " [\u{2191}/\u{2193}] Scroll | [Ctrl+u/d] PageUp/Down | [Shift+\u{2191}/\u{2193}] Toggle Job| [q] Close ";
+            " [\u{2191}/\u{2193}] Scroll | [Ctrl+U/D] PageUp/Down | [Shift+\u{2191}/\u{2193}] Toggle Job| [q] Close ";
 
         let display = self.build_display_text();
         let widget = Paragraph::new(display)

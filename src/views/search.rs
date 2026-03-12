@@ -139,7 +139,7 @@ impl SearchDialog {
         self.draw_status_list(frame, quad[2], params, all_statuses);
         self.draw_qos_list(frame, quad[3], params, all_qos);
 
-        let hint = "\u{2190}/\u{2192}: Switch | \u{2191}/\u{2193}: Navigate | Enter: Select/Apply | r: Reset | Ctrl+s: Save | Esc: Close";
+        let hint = "\u{2190}/\u{2192}: Switch | \u{2191}/\u{2193}: Navigate | Enter: Select/Apply | r: Reset | Ctrl+S: Save | Esc: Close";
         let help = Paragraph::new(hint)
             .style(Style::default().fg(Color::Gray))
             .block(Block::default().borders(Borders::ALL));
