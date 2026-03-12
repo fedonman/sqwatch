@@ -104,7 +104,7 @@ pub fn render_statusbar(frame: &mut Frame, area: Rect, counts: (usize, usize, us
         .collect();
 
     let stat_spans = vec![
-        Span::styled("Job Stat: ", accent),
+        Span::styled("Jobs: ", accent),
         Span::styled(
             format!("P[ {} ] ", counts.0),
             Style::default().fg(Color::Yellow),
