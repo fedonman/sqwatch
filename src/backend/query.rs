@@ -14,7 +14,7 @@ pub struct QueryParams {
     pub partitions: Vec<String>,
     pub qos: Vec<String>,
     pub name_pattern: Option<String>,
-    pub node_pattern: Option<String>,
+    pub nodes: Vec<String>,
     pub fmt: String,
     pub ordering: HashMap<String, bool>,
 }
@@ -31,7 +31,7 @@ impl Default for QueryParams {
             partitions: Vec::new(),
             qos: Vec::new(),
             name_pattern: None,
-            node_pattern: None,
+            nodes: Vec::new(),
             fmt: "%i|%j|%u|%T|%M|%N|%C|%m|%P|%q".to_string(),
             ordering,
         }
@@ -75,6 +75,11 @@ impl QueryParams {
         if !self.qos.is_empty() {
             args.push("--qos".into());
             args.push(self.qos.join(","));
+        }
+
+        if !self.nodes.is_empty() {
+            args.push("--nodelist".into());
+            args.push(self.nodes.join(","));
         }
 
         args.push("--format".into());

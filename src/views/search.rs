@@ -17,10 +17,9 @@ pub struct SearchDialog {
     pub status_cursor: ListState,
     pub partition_cursor: ListState,
     pub qos_cursor: ListState,
+    pub node_cursor: ListState,
     pub name_pattern: String,
-    pub node_pattern: String,
     pub name_ok: Option<bool>,
-    pub node_ok: Option<bool>,
     pub visible: bool,
 }
 
@@ -31,7 +30,7 @@ pub enum SearchFocus {
     Partitions,
     QoS,
     NamePattern,
-    NodePattern,
+    Nodes,
 }
 
 impl SearchDialog {
@@ -42,6 +41,8 @@ impl SearchDialog {
         pc.select(Some(0));
         let mut qc = ListState::default();
         qc.select(Some(0));
+        let mut nc = ListState::default();
+        nc.select(Some(0));
 
         Self {
             tab_idx: 0,
@@ -51,10 +52,9 @@ impl SearchDialog {
             status_cursor: sc,
             partition_cursor: pc,
             qos_cursor: qc,
+            node_cursor: nc,
             name_pattern: String::new(),
-            node_pattern: String::new(),
             name_ok: None,
-            node_ok: None,
             visible: false,
         }
     }
@@ -62,18 +62,11 @@ impl SearchDialog {
     pub fn load_from(&mut self, params: &QueryParams) {
         self.user_input = params.user.clone().unwrap_or_default();
         self.name_pattern = params.name_pattern.clone().unwrap_or_default();
-        self.node_pattern = params.node_pattern.clone().unwrap_or_default();
 
         self.name_ok = if self.name_pattern.is_empty() {
             None
         } else {
             Some(Regex::new(&self.name_pattern).is_ok())
-        };
-
-        self.node_ok = if self.node_pattern.is_empty() {
-            None
-        } else {
-            Some(Regex::new(&self.node_pattern).is_ok())
         };
     }
 
@@ -85,14 +78,6 @@ impl SearchDialog {
         }
     }
 
-    fn check_node_regex(&mut self) {
-        if self.node_pattern.is_empty() {
-            self.node_ok = None;
-        } else {
-            self.node_ok = Some(Regex::new(&self.node_pattern).is_ok());
-        }
-    }
-
     pub fn render(
         &mut self,
         frame: &mut Frame,
@@ -101,6 +86,7 @@ impl SearchDialog {
         all_statuses: &[JobState],
         all_partitions: &[String],
         all_qos: &[String],
+        all_nodes: &[String],
     ) {
         frame.render_widget(Clear, area);
 
@@ -114,7 +100,7 @@ impl SearchDialog {
             .direction(Direction::Vertical)
             .margin(1)
             .constraints([
-                Constraint::Length(8),
+                Constraint::Length(5),
                 Constraint::Min(5),
                 Constraint::Length(3),
             ])
@@ -122,18 +108,20 @@ impl SearchDialog {
 
         self.draw_text_inputs(frame, rows[0]);
 
-        let triple = Layout::default()
+        let quad = Layout::default()
             .direction(Direction::Horizontal)
             .constraints([
-                Constraint::Ratio(1, 3),
-                Constraint::Ratio(1, 3),
-                Constraint::Ratio(1, 3),
+                Constraint::Ratio(1, 4),
+                Constraint::Ratio(1, 4),
+                Constraint::Ratio(1, 4),
+                Constraint::Ratio(1, 4),
             ])
             .split(rows[1]);
 
-        self.draw_status_list(frame, triple[0], params, all_statuses);
-        self.draw_partition_list(frame, triple[1], params, all_partitions);
-        self.draw_qos_list(frame, triple[2], params, all_qos);
+        self.draw_status_list(frame, quad[0], params, all_statuses);
+        self.draw_partition_list(frame, quad[1], params, all_partitions);
+        self.draw_qos_list(frame, quad[2], params, all_qos);
+        self.draw_node_list(frame, quad[3], params, all_nodes);
 
         let hint = "\u{2190}/\u{2192}: Switch Filters | \u{2191}/\u{2193}: Navigate | Enter: Select/Apply | Esc: Close";
         let help = Paragraph::new(hint)
@@ -147,9 +135,8 @@ impl SearchDialog {
             .direction(Direction::Horizontal)
             .margin(1)
             .constraints([
-                Constraint::Ratio(1, 3),
-                Constraint::Ratio(1, 3),
-                Constraint::Ratio(1, 3),
+                Constraint::Ratio(1, 2),
+                Constraint::Ratio(1, 2),
             ])
             .split(area);
 
@@ -187,26 +174,6 @@ impl SearchDialog {
             cells[1],
         );
 
-        // Node pattern
-        let nd_title = match self.node_ok {
-            Some(true) => "Node Filter (regex) \u{2713}",
-            Some(false) => "Node Filter (regex) \u{2717} Invalid",
-            None => "Node Filter (regex)",
-        };
-        let nd_style = match (self.focus == SearchFocus::NodePattern, self.node_ok) {
-            (true, _) => Style::default().fg(Color::Cyan),
-            (_, Some(false)) => Style::default().fg(Color::Red),
-            _ => Style::default(),
-        };
-        let nd_block = Block::default()
-            .title(nd_title)
-            .borders(Borders::ALL)
-            .style(nd_style);
-        frame.render_widget(
-            Paragraph::new(self.node_pattern.clone()).block(nd_block),
-            cells[2],
-        );
-
         if self.editing {
             let (cx, cy) = match self.focus {
                 SearchFocus::Username => (
@@ -216,10 +183,6 @@ impl SearchDialog {
                 SearchFocus::NamePattern => (
                     cells[1].x + 1 + self.name_pattern.len() as u16,
                     cells[1].y + 1,
-                ),
-                SearchFocus::NodePattern => (
-                    cells[2].x + 1 + self.node_pattern.len() as u16,
-                    cells[2].y + 1,
                 ),
                 _ => (0, 0),
             };
@@ -325,6 +288,38 @@ impl SearchDialog {
         frame.render_stateful_widget(widget, area, &mut self.qos_cursor);
     }
 
+    fn draw_node_list(
+        &mut self,
+        frame: &mut Frame,
+        area: Rect,
+        params: &QueryParams,
+        choices: &[String],
+    ) {
+        let block = Block::default()
+            .title("Nodes")
+            .borders(Borders::ALL)
+            .style(if self.focus == SearchFocus::Nodes {
+                Style::default().fg(Color::Cyan)
+            } else {
+                Style::default()
+            });
+
+        let items: Vec<ListItem> = choices
+            .iter()
+            .map(|n| {
+                let on = params.nodes.contains(n);
+                let mark = if on { "[X] " } else { "[ ] " };
+                let c = if on { Color::Green } else { Color::White };
+                ListItem::new(Line::from(format!("{}{}", mark, n))).style(Style::default().fg(c))
+            })
+            .collect();
+
+        let widget = List::new(items)
+            .block(block)
+            .highlight_style(Style::default().add_modifier(Modifier::BOLD));
+        frame.render_stateful_widget(widget, area, &mut self.node_cursor);
+    }
+
     pub fn handle_key(
         &mut self,
         key: crossterm::event::KeyEvent,
@@ -332,6 +327,7 @@ impl SearchDialog {
         all_statuses: &[JobState],
         all_partitions: &[String],
         all_qos: &[String],
+        all_nodes: &[String],
     ) -> SearchAction {
         use crossterm::event::KeyCode;
 
@@ -353,9 +349,22 @@ impl SearchDialog {
 
         match key.code {
             KeyCode::Enter => match self.focus {
-                SearchFocus::Username | SearchFocus::NamePattern | SearchFocus::NodePattern => {
+                SearchFocus::Username | SearchFocus::NamePattern => {
                     self.editing = true;
                     SearchAction::Noop
+                }
+                SearchFocus::Nodes => {
+                    if let Some(idx) = self.node_cursor.selected() {
+                        if idx < all_nodes.len() {
+                            let n = all_nodes[idx].clone();
+                            if params.nodes.contains(&n) {
+                                params.nodes.retain(|x| x != &n);
+                            } else {
+                                params.nodes.push(n);
+                            }
+                        }
+                    }
+                    SearchAction::Confirm
                 }
                 SearchFocus::States => {
                     if let Some(idx) = self.status_cursor.selected() {
@@ -398,11 +407,11 @@ impl SearchDialog {
                 }
             },
             KeyCode::Up => {
-                self.navigate_list_up(all_statuses.len(), all_partitions.len(), all_qos.len());
+                self.navigate_list_up(all_statuses.len(), all_partitions.len(), all_qos.len(), all_nodes.len());
                 SearchAction::Noop
             }
             KeyCode::Down => {
-                self.navigate_list_down(all_statuses.len(), all_partitions.len(), all_qos.len());
+                self.navigate_list_down(all_statuses.len(), all_partitions.len(), all_qos.len(), all_nodes.len());
                 SearchAction::Noop
             }
             KeyCode::Left => {
@@ -427,43 +436,53 @@ impl SearchDialog {
         }
     }
 
-    fn navigate_list_up(&mut self, n_states: usize, n_parts: usize, n_qos: usize) {
+    fn navigate_list_up(&mut self, n_states: usize, n_parts: usize, n_qos: usize, n_nodes: usize) {
         match self.focus {
             SearchFocus::States => {
                 let cur = self.status_cursor.selected().unwrap_or(0);
-                let next = if cur == 0 { n_states - 1 } else { cur - 1 };
+                let next = if cur == 0 { n_states.saturating_sub(1) } else { cur - 1 };
                 self.status_cursor.select(Some(next));
             }
             SearchFocus::Partitions => {
                 let cur = self.partition_cursor.selected().unwrap_or(0);
-                let next = if cur == 0 { n_parts - 1 } else { cur - 1 };
+                let next = if cur == 0 { n_parts.saturating_sub(1) } else { cur - 1 };
                 self.partition_cursor.select(Some(next));
             }
             SearchFocus::QoS => {
                 let cur = self.qos_cursor.selected().unwrap_or(0);
-                let next = if cur == 0 { n_qos - 1 } else { cur - 1 };
+                let next = if cur == 0 { n_qos.saturating_sub(1) } else { cur - 1 };
                 self.qos_cursor.select(Some(next));
+            }
+            SearchFocus::Nodes => {
+                let cur = self.node_cursor.selected().unwrap_or(0);
+                let next = if cur == 0 { n_nodes.saturating_sub(1) } else { cur - 1 };
+                self.node_cursor.select(Some(next));
             }
             _ => {}
         }
     }
 
-    fn navigate_list_down(&mut self, n_states: usize, n_parts: usize, n_qos: usize) {
+    fn navigate_list_down(&mut self, n_states: usize, n_parts: usize, n_qos: usize, n_nodes: usize) {
         match self.focus {
             SearchFocus::States => {
                 let cur = self.status_cursor.selected().unwrap_or(0);
-                let next = if cur >= n_states - 1 { 0 } else { cur + 1 };
+                let next = if n_states == 0 || cur >= n_states - 1 { 0 } else { cur + 1 };
                 self.status_cursor.select(Some(next));
             }
             SearchFocus::Partitions => {
                 let cur = self.partition_cursor.selected().unwrap_or(0);
-                let next = if cur >= n_parts - 1 { 0 } else { cur + 1 };
+                let next = if n_parts == 0 || cur >= n_parts - 1 { 0 } else { cur + 1 };
                 self.partition_cursor.select(Some(next));
             }
             SearchFocus::QoS => {
                 let cur = self.qos_cursor.selected().unwrap_or(0);
-                let next = if cur >= n_qos - 1 { 0 } else { cur + 1 };
+                let next = if n_qos == 0 || cur >= n_qos - 1 { 0 } else { cur + 1 };
                 self.qos_cursor.select(Some(next));
+            }
+            SearchFocus::Nodes => {
+                let cur = self.node_cursor.selected().unwrap_or(0);
+                let next = if n_nodes == 0 || cur >= n_nodes - 1 { 0 } else { cur + 1 };
+                self.node_cursor.select(Some(next));
             }
             _ => {}
         }
@@ -494,14 +513,6 @@ impl SearchDialog {
                             params.name_pattern = Some(self.name_pattern.clone());
                         }
                     }
-                    SearchFocus::NodePattern => {
-                        if self.node_pattern.is_empty() {
-                            params.node_pattern = None;
-                            self.node_ok = None;
-                        } else if self.node_ok == Some(true) {
-                            params.node_pattern = Some(self.node_pattern.clone());
-                        }
-                    }
                     _ => {}
                 }
                 self.editing = false;
@@ -513,10 +524,6 @@ impl SearchDialog {
                     SearchFocus::NamePattern => {
                         self.name_pattern.push(ch);
                         self.check_name_regex();
-                    }
-                    SearchFocus::NodePattern => {
-                        self.node_pattern.push(ch);
-                        self.check_node_regex();
                     }
                     _ => {}
                 }
@@ -531,10 +538,6 @@ impl SearchDialog {
                         self.name_pattern.pop();
                         self.check_name_regex();
                     }
-                    SearchFocus::NodePattern => {
-                        self.node_pattern.pop();
-                        self.check_node_regex();
-                    }
                     _ => {}
                 }
                 SearchAction::Noop
@@ -547,10 +550,10 @@ impl SearchDialog {
         self.focus = match self.tab_idx {
             0 => SearchFocus::Username,
             1 => SearchFocus::NamePattern,
-            2 => SearchFocus::NodePattern,
-            3 => SearchFocus::States,
-            4 => SearchFocus::Partitions,
-            5 => SearchFocus::QoS,
+            2 => SearchFocus::States,
+            3 => SearchFocus::Partitions,
+            4 => SearchFocus::QoS,
+            5 => SearchFocus::Nodes,
             _ => SearchFocus::Username,
         };
     }

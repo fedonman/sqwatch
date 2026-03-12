@@ -13,7 +13,7 @@ use tokio::runtime::Runtime;
 
 use crate::{
     backend::{
-        commands::{cancel_jobs, check_slurm_available, list_partitions, list_qos},
+        commands::{cancel_jobs, check_slurm_available, list_nodes, list_partitions, list_qos},
         query::{fetch_jobs, QueryParams},
         JobState,
     },
@@ -47,6 +47,7 @@ pub struct Dashboard {
     pub refresh_secs: u64,
     pub known_partitions: Vec<String>,
     pub known_qos: Vec<String>,
+    pub known_nodes: Vec<String>,
     pub known_states: Vec<JobState>,
     pub visible_fields: Vec<JobField>,
     pub sort_fields: Vec<OrderedField>,
@@ -70,6 +71,7 @@ impl Dashboard {
 
         let known_partitions = rt.block_on(list_partitions());
         let known_qos = rt.block_on(list_qos());
+        let known_nodes = rt.block_on(list_nodes());
         let known_states = JobState::all_known();
 
         let visible_fields = JobField::defaults();
@@ -94,6 +96,7 @@ impl Dashboard {
             refresh_secs: 1,
             known_partitions,
             known_qos,
+            known_nodes,
             known_states,
             visible_fields,
             sort_fields,
@@ -150,31 +153,6 @@ impl Dashboard {
             }
         }
 
-        if let Some(ref pat) = self.params.node_pattern {
-            if !pat.is_empty() {
-                match regex::Regex::new(pat) {
-                    Ok(re) => {
-                        let before = jobs.len();
-                        jobs.retain(|j| match &j.nodelist {
-                            Some(n) => re.is_match(n),
-                            None => true,
-                        });
-                        let after = jobs.len();
-                        if before != after && before > 0 {
-                            stats.push(format!(
-                                "node: {}/{} ({:.1}%)",
-                                after,
-                                before,
-                                (after as f64 / before as f64) * 100.0
-                            ));
-                        }
-                    }
-                    Err(e) => {
-                        self.flash(format!("Invalid node regex pattern: {}", e), 3);
-                    }
-                }
-            }
-        }
 
         if !stats.is_empty() {
             let remaining = jobs.len();
@@ -246,6 +224,7 @@ impl Dashboard {
             &self.known_states,
             &self.known_partitions,
             &self.known_qos,
+            &self.known_nodes,
         );
     }
 
@@ -416,6 +395,7 @@ impl Dashboard {
                     &self.known_states,
                     &self.known_partitions,
                     &self.known_qos,
+                    &self.known_nodes,
                 );
                 match action {
                     SearchAction::Dismiss => self.search_dlg.visible = false,
@@ -592,8 +572,8 @@ impl Dashboard {
         if let Some(ref n) = self.params.name_pattern {
             parts.push(format!("name_regex={}", n));
         }
-        if let Some(ref n) = self.params.node_pattern {
-            parts.push(format!("node_regex={}", n));
+        if !self.params.nodes.is_empty() {
+            parts.push(format!("nodes={}", self.params.nodes.join(",")));
         }
 
         if parts.is_empty() {

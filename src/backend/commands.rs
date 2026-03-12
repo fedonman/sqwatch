@@ -70,6 +70,23 @@ pub async fn list_partitions() -> Vec<String> {
         .collect()
 }
 
+pub async fn list_nodes() -> Vec<String> {
+    let out = match run_cmd("sinfo", vec!["-h".into(), "-N".into(), "-o".into(), "%N".into()]).await
+    {
+        Ok(o) => o,
+        Err(_) => return Vec::new(),
+    };
+
+    let mut nodes: Vec<String> = String::from_utf8_lossy(&out.stdout)
+        .lines()
+        .map(|l| l.trim().to_string())
+        .filter(|l| !l.is_empty())
+        .collect();
+    nodes.sort();
+    nodes.dedup();
+    nodes
+}
+
 pub async fn list_qos() -> Vec<String> {
     let out = match run_cmd(
         "sacctmgr",
