@@ -134,10 +134,10 @@ impl SearchDialog {
             ])
             .split(rows[1]);
 
-        self.draw_status_list(frame, quad[0], params, all_statuses);
+        self.draw_node_list(frame, quad[0], params, all_nodes);
         self.draw_partition_list(frame, quad[1], params, all_partitions);
-        self.draw_qos_list(frame, quad[2], params, all_qos);
-        self.draw_node_list(frame, quad[3], params, all_nodes);
+        self.draw_status_list(frame, quad[2], params, all_statuses);
+        self.draw_qos_list(frame, quad[3], params, all_qos);
 
         let hint = "\u{2190}/\u{2192}: Switch | \u{2191}/\u{2193}: Navigate | Enter: Select/Apply | r: Reset | Ctrl+s: Save | Esc: Close";
         let help = Paragraph::new(hint)
@@ -593,10 +593,10 @@ impl SearchDialog {
         self.focus = match self.tab_idx {
             0 => SearchFocus::Username,
             1 => SearchFocus::NamePattern,
-            2 => SearchFocus::States,
+            2 => SearchFocus::Nodes,
             3 => SearchFocus::Partitions,
-            4 => SearchFocus::QoS,
-            5 => SearchFocus::Nodes,
+            4 => SearchFocus::States,
+            5 => SearchFocus::QoS,
             _ => SearchFocus::Username,
         };
     }
