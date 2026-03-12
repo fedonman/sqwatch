@@ -126,14 +126,14 @@ impl JobField {
         vec![
             JobField::Id,
             JobField::Name,
-            JobField::User,
             JobField::State,
             JobField::Time,
+            JobField::User,
             JobField::Node,
+            JobField::Partition,
             JobField::CPUs,
             JobField::Memory,
-            JobField::Partition,
-            JobField::QoS,
+            JobField::WorkDir,
         ]
     }
 }

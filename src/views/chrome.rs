@@ -24,9 +24,10 @@ pub fn render_titlebar(
     area: Rect,
     info: &str
 ) {
+    let brand_width = "sqwatch - SLURM Queue Watcher".len() as u16 + 2; // +2 for borders
     let halves = Layout::default()
         .direction(Direction::Horizontal)
-        .constraints([Constraint::Percentage(20), Constraint::Percentage(80)])
+        .constraints([Constraint::Length(brand_width), Constraint::Min(0)])
         .split(area);
 
     let brand = Paragraph::new(Text::from(vec![Line::from(vec![

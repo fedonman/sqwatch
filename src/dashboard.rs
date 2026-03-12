@@ -27,7 +27,6 @@ use crate::{
     },
     core::{
         config::{load_columns, load_filters, save_columns, save_filters},
-        current_user,
         input::{InputConfig, InputLoop, Signal},
     },
 };
@@ -64,11 +63,7 @@ impl Dashboard {
             .build()
             .expect("tokio runtime init failed");
 
-        let login = current_user();
-        let mut params = QueryParams {
-            user: Some(login),
-            ..Default::default()
-        };
+        let mut params = QueryParams::default();
         if let Some(saved) = load_filters() {
             saved.apply_to(&mut params);
         }

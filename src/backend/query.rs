@@ -21,12 +21,11 @@ pub struct QueryParams {
 
 impl Default for QueryParams {
     fn default() -> Self {
-        let login = std::env::var("USER").unwrap_or_default();
         let mut ordering = HashMap::new();
         ordering.insert("i".to_string(), true);
 
         Self {
-            user: Some(login),
+            user: None,
             statuses: Vec::new(),
             partitions: Vec::new(),
             qos: Vec::new(),
