@@ -82,13 +82,13 @@ pub fn render_statusbar(frame: &mut Frame, area: Rect, counts: (usize, usize, us
     let bindings = [
         ("Esc", "Quit"),
         ("\u{2191}/\u{2193}", "Navigate"),
-        ("Space", "Select"),
-        ("Enter", "Script"),
-        ("f", "Filter"),
-        ("c", "Columns"),
-        ("v", "Log"),
-        ("a", "SelectAll"),
-        ("x", "Cancel"),
+        // ("Space", "Select"),
+        ("f", "Toggle Filters"),
+        ("c", "Toggle Columns"),
+        ("v", "Inspect Logs"),
+        ("Enter", "Inspect Script"),
+        // ("a", "SelectAll"),
+        // ("x", "Cancel"),
     ];
 
     let key_spans: Vec<Span> = bindings
