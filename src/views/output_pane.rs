@@ -67,7 +67,7 @@ impl OutputPane {
             stderr_file: None,
             monitor: None,
             data_rx: None,
-            poll_rate: Duration::from_secs(2),
+            poll_rate: Duration::from_secs(1),
             fstate: FileState::Missing,
         }
     }
