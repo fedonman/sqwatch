@@ -28,8 +28,39 @@ impl JobTable {
     }
 
     pub fn set_jobs(&mut self, data: Vec<Job>) {
+        // Preserve marked selections across refreshes by remapping via job ID
+        let marked_ids: Vec<String> = self
+            .marked
+            .iter()
+            .filter_map(|&i| self.jobs.get(i))
+            .map(|j| j.job_id.clone())
+            .collect();
+
+        // Preserve cursor position by job ID
+        let focused_id = self
+            .tbl_state
+            .selected()
+            .and_then(|i| self.jobs.get(i))
+            .map(|j| j.job_id.clone());
+
         self.jobs = data;
-        self.marked.clear();
+
+        // Remap marked indices
+        self.marked = self
+            .jobs
+            .iter()
+            .enumerate()
+            .filter(|(_, j)| marked_ids.contains(&j.job_id))
+            .map(|(i, _)| i)
+            .collect();
+
+        // Restore cursor position
+        if let Some(ref id) = focused_id {
+            if let Some(pos) = self.jobs.iter().position(|j| &j.job_id == id) {
+                self.tbl_state.select(Some(pos));
+                return;
+            }
+        }
 
         if let Some(sel) = self.tbl_state.selected() {
             if sel >= self.jobs.len() {
