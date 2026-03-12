@@ -26,6 +26,7 @@ use crate::{
         job_table::JobTable,
     },
     core::{
+        config::{load_filters, save_filters},
         current_user,
         input::{InputConfig, InputLoop, Signal},
     },
@@ -64,10 +65,13 @@ impl Dashboard {
             .expect("tokio runtime init failed");
 
         let login = current_user();
-        let params = QueryParams {
+        let mut params = QueryParams {
             user: Some(login),
             ..Default::default()
         };
+        if let Some(saved) = load_filters() {
+            saved.apply_to(&mut params);
+        }
 
         let known_partitions = rt.block_on(list_partitions());
         let known_qos = rt.block_on(list_qos());
@@ -402,6 +406,12 @@ impl Dashboard {
                     SearchAction::Confirm => {
                         if let Err(e) = self.apply_search() {
                             self.flash(format!("Failed to apply filters: {}", e), 3);
+                        }
+                    }
+                    SearchAction::Save => {
+                        match save_filters(&self.params) {
+                            Ok(_) => self.flash("Filter settings saved".into(), 3),
+                            Err(e) => self.flash(format!("Failed to save filters: {}", e), 3),
                         }
                     }
                     SearchAction::Noop => {}

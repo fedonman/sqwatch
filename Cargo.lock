@@ -1637,6 +1637,8 @@ dependencies = [
  "notify",
  "ratatui",
  "regex",
+ "serde",
+ "serde_json",
  "tokio",
 ]
 

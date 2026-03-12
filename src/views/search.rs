@@ -1,3 +1,4 @@
+use crossterm::event::KeyModifiers;
 use ratatui::{
     layout::{Constraint, Direction, Layout, Position, Rect},
     style::{Color, Modifier, Style},
@@ -123,7 +124,7 @@ impl SearchDialog {
         self.draw_qos_list(frame, quad[2], params, all_qos);
         self.draw_node_list(frame, quad[3], params, all_nodes);
 
-        let hint = "\u{2190}/\u{2192}: Switch Filters | \u{2191}/\u{2193}: Navigate | Enter: Select/Apply | r: Reset All | Esc: Close";
+        let hint = "\u{2190}/\u{2192}: Switch | \u{2191}/\u{2193}: Navigate | Enter: Select/Apply | r: Reset | Ctrl+s: Save | Esc: Close";
         let help = Paragraph::new(hint)
             .style(Style::default().fg(Color::Gray))
             .block(Block::default().borders(Borders::ALL));
@@ -340,6 +341,9 @@ impl SearchDialog {
                 return SearchAction::Noop;
             }
             KeyCode::F(10) => return SearchAction::Confirm,
+            KeyCode::Char('s') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+                return SearchAction::Save;
+            }
             _ => {}
         }
 
@@ -576,4 +580,5 @@ pub enum SearchAction {
     Noop,
     Dismiss,
     Confirm,
+    Save,
 }
