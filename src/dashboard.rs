@@ -420,7 +420,6 @@ impl Dashboard {
                 match action {
                     SearchAction::Dismiss => self.search_dlg.visible = false,
                     SearchAction::Confirm => {
-                        self.search_dlg.visible = false;
                         if let Err(e) = self.apply_search() {
                             self.flash(format!("Failed to apply filters: {}", e), 3);
                         }

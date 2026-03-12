@@ -1,4 +1,3 @@
-use crossterm::event::KeyModifiers;
 use ratatui::{
     layout::{Constraint, Direction, Layout, Position, Rect},
     style::{Color, Modifier, Style},
@@ -136,7 +135,7 @@ impl SearchDialog {
         self.draw_partition_list(frame, triple[1], params, all_partitions);
         self.draw_qos_list(frame, triple[2], params, all_qos);
 
-        let hint = "\u{2191}/\u{2193}: Navigate | \u{2190}/\u{2192}: Switch Filters | Enter: Select/Input | Ctrl+a: Apply | Esc: Close";
+        let hint = "\u{2191}/\u{2193}: Navigate | \u{2190}/\u{2192}: Switch Filters | Enter: Select/Apply | Esc: Close";
         let help = Paragraph::new(hint)
             .style(Style::default().fg(Color::Gray))
             .block(Block::default().borders(Borders::ALL));
@@ -345,9 +344,6 @@ impl SearchDialog {
                 return SearchAction::Noop;
             }
             KeyCode::F(10) => return SearchAction::Confirm,
-            KeyCode::Char('a') if key.modifiers.contains(KeyModifiers::CONTROL) => {
-                return SearchAction::Confirm;
-            }
             _ => {}
         }
 
@@ -372,7 +368,7 @@ impl SearchDialog {
                             }
                         }
                     }
-                    SearchAction::Noop
+                    SearchAction::Confirm
                 }
                 SearchFocus::Partitions => {
                     if let Some(idx) = self.partition_cursor.selected() {
@@ -385,7 +381,7 @@ impl SearchDialog {
                             }
                         }
                     }
-                    SearchAction::Noop
+                    SearchAction::Confirm
                 }
                 SearchFocus::QoS => {
                     if let Some(idx) = self.qos_cursor.selected() {
@@ -398,7 +394,7 @@ impl SearchDialog {
                             }
                         }
                     }
-                    SearchAction::Noop
+                    SearchAction::Confirm
                 }
             },
             KeyCode::Up => {
@@ -509,7 +505,7 @@ impl SearchDialog {
                     _ => {}
                 }
                 self.editing = false;
-                SearchAction::Noop
+                SearchAction::Confirm
             }
             KeyCode::Char(ch) => {
                 match self.focus {
