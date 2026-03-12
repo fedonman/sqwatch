@@ -91,7 +91,7 @@ pub fn render_statusbar(frame: &mut Frame, area: Rect, counts: (usize, usize, us
         ("x", "Cancel"),
     ];
 
-    let mut spans: Vec<Span> = bindings
+    let key_spans: Vec<Span> = bindings
         .iter()
         .flat_map(|(k, desc)| {
             vec![
@@ -103,22 +103,38 @@ pub fn render_statusbar(frame: &mut Frame, area: Rect, counts: (usize, usize, us
         })
         .collect();
 
-    spans.push(Span::styled("Job Stat: ", accent));
-    spans.push(Span::styled(
-        format!("P[ {} ] ", counts.0),
-        Style::default().fg(Color::Yellow),
-    ));
-    spans.push(Span::styled(
-        format!("R[ {} ] ", counts.1),
-        Style::default().fg(Color::Green),
-    ));
-    spans.push(Span::styled(
-        format!("Other[ {} ]", counts.2),
-        Style::default().fg(Color::Blue),
-    ));
+    let stat_spans = vec![
+        Span::styled("Job Stat: ", accent),
+        Span::styled(
+            format!("P[ {} ] ", counts.0),
+            Style::default().fg(Color::Yellow),
+        ),
+        Span::styled(
+            format!("R[ {} ] ", counts.1),
+            Style::default().fg(Color::Green),
+        ),
+        Span::styled(
+            format!("Other[ {} ]", counts.2),
+            Style::default().fg(Color::Blue),
+        ),
+    ];
 
-    let bar = Paragraph::new(Line::from(spans)).block(Block::default().borders(Borders::ALL));
-    frame.render_widget(bar, area);
+    // Calculate stat width for right-aligned box
+    let stat_text_len: usize = stat_spans.iter().map(|s| s.width()).sum();
+    let stat_width = stat_text_len as u16 + 2; // +2 for borders
+
+    let sections = Layout::default()
+        .direction(Direction::Horizontal)
+        .constraints([Constraint::Min(0), Constraint::Length(stat_width)])
+        .split(area);
+
+    let keys_bar = Paragraph::new(Line::from(key_spans))
+        .block(Block::default().borders(Borders::ALL));
+    frame.render_widget(keys_bar, sections[0]);
+
+    let stat_bar = Paragraph::new(Line::from(stat_spans))
+        .block(Block::default().borders(Borders::ALL));
+    frame.render_widget(stat_bar, sections[1]);
 }
 
 pub fn popup_rect(parent: Rect, pct_w: u16, pct_h: u16) -> Rect {
