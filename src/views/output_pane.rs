@@ -4,11 +4,10 @@ use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use ratatui::{
     Frame,
     layout::Rect,
-    style::{Color, Modifier, Style},
-    text::{Line, Span, Text},
+    style::{Color, Style},
     widgets::{Block, BorderType, Borders, Paragraph, Wrap},
 };
-use std::{collections::HashMap, iter::once, path::PathBuf, process::Command, time::Duration};
+use std::{collections::HashMap, path::PathBuf, process::Command, time::Duration};
 
 use crate::core::live_file::{LiveFileMonitor, MonitorError};
 
@@ -189,15 +188,7 @@ impl OutputPane {
             _ => self.content.clone(),
         };
 
-        let fitted = Self::prepare_text(
-            &display_text,
-            area.height as usize,
-            area.width as usize,
-            self.scroll_pos,
-            false,
-        );
-
-        let widget = Paragraph::new(fitted)
+        let widget = Paragraph::new(display_text)
             .style(Style::default().fg(Color::Rgb(200, 200, 210)))
             .block(block)
             .wrap(Wrap { trim: false })
@@ -216,75 +207,6 @@ impl OutputPane {
             }
             _ => {}
         }
-    }
-
-    fn prepare_text(raw: &str, rows: usize, cols: usize, offset: usize, _wrap: bool) -> Text<'_> {
-        let cleaned: Vec<String> = raw
-            .lines()
-            .map(|line| {
-                if line.contains('\r') {
-                    line.split('\r').next_back().unwrap_or("").to_string()
-                } else {
-                    line.to_string()
-                }
-            })
-            .collect();
-
-        let joined = cleaned.join("\n");
-
-        let rendered: Vec<Line> = joined
-            .lines()
-            .rev()
-            .skip(offset)
-            .flat_map(|l| {
-                let chunks = Self::split_long_line(l, cols, cols.saturating_sub(2));
-                chunks
-                    .into_iter()
-                    .enumerate()
-                    .map(|(i, piece)| {
-                        if i == 0 {
-                            Line::raw(piece.to_string())
-                        } else {
-                            Line::default().spans(vec![
-                                Span::styled(
-                                    "\u{21aa} ",
-                                    Style::default().add_modifier(Modifier::DIM),
-                                ),
-                                Span::raw(piece.to_string()),
-                            ])
-                        }
-                    })
-                    .rev()
-            })
-            .take(rows)
-            .collect();
-
-        Text::from(rendered.into_iter().rev().collect::<Vec<Line>>())
-    }
-
-    fn split_long_line(s: &str, first_width: usize, rest_width: usize) -> Vec<&str> {
-        let breakpoints: Vec<usize> = s
-            .char_indices()
-            .map(|(i, _)| i)
-            .enumerate()
-            .filter(|&(n, _)| {
-                if n > first_width {
-                    rest_width > 0 && (n - first_width).is_multiple_of(rest_width)
-                } else {
-                    n == 0 || n == first_width
-                }
-            })
-            .map(|(_, byte_pos)| byte_pos)
-            .collect();
-
-        let windows = breakpoints.windows(2).collect::<Vec<_>>();
-        let tail_start = *breakpoints.last().unwrap_or(&0);
-
-        windows
-            .iter()
-            .map(|w| &s[w[0]..w[1]])
-            .chain(once(&s[tail_start..]))
-            .collect()
     }
 
     fn resolve_log_paths(&mut self) {
