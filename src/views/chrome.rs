@@ -6,9 +6,9 @@ use ratatui::{
     widgets::{Block, Paragraph},
 };
 
-use crate::dashboard::FocusPanel;
+use crate::dashboard::FocusWidget;
 use crate::views::filter_tree::SIDEBAR_WIDTH;
-use crate::views::pane_selector::VisiblePanes;
+use crate::views::widget_selector::VisibleWidgets;
 
 const BAR_BG: Color = Color::Rgb(30, 30, 50);
 const ACCENT: Color = Color::Magenta;
@@ -24,7 +24,7 @@ pub struct FrameLayout {
     pub statusbar: Rect,
 }
 
-pub fn build_frame(frame: &mut Frame, panes: &VisiblePanes) -> FrameLayout {
+pub fn build_frame(frame: &mut Frame, widgets: &VisibleWidgets) -> FrameLayout {
     let rows = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
@@ -39,7 +39,7 @@ pub fn build_frame(frame: &mut Frame, panes: &VisiblePanes) -> FrameLayout {
     let content = rows[1];
 
     // Split off sidebar if visible
-    let (sidebar, remaining) = if panes.filters {
+    let (sidebar, remaining) = if widgets.filters {
         let cols = Layout::default()
             .direction(Direction::Horizontal)
             .constraints([
@@ -52,8 +52,8 @@ pub fn build_frame(frame: &mut Frame, panes: &VisiblePanes) -> FrameLayout {
         (None, content)
     };
 
-    // Split remaining into table and right area (50/50) if any right panes exist
-    let right_count = panes.right_pane_count();
+    // Split remaining into table and right area (50/50) if any right widgets exist
+    let right_count = widgets.right_widget_count();
     let (table_area, right_area) = if right_count > 0 {
         let cols = Layout::default()
             .direction(Direction::Horizontal)
@@ -67,7 +67,7 @@ pub fn build_frame(frame: &mut Frame, panes: &VisiblePanes) -> FrameLayout {
         (remaining, None)
     };
 
-    // Split right area vertically among visible right panes
+    // Split right area vertically among visible right widgets
     let (mut script_rect, mut stdout_rect, mut stderr_rect) = (None, None, None);
 
     if let Some(right) = right_area {
@@ -81,15 +81,15 @@ pub fn build_frame(frame: &mut Frame, panes: &VisiblePanes) -> FrameLayout {
             .split(right);
 
         let mut idx = 0;
-        if panes.script {
+        if widgets.script {
             script_rect = Some(parts[idx]);
             idx += 1;
         }
-        if panes.stdout {
+        if widgets.stdout {
             stdout_rect = Some(parts[idx]);
             idx += 1;
         }
-        if panes.stderr {
+        if widgets.stderr {
             stderr_rect = Some(parts[idx]);
         }
     }
@@ -156,7 +156,7 @@ pub fn render_titlebar(
     }
 }
 
-pub fn render_statusbar(frame: &mut Frame, area: Rect, counts: (usize, usize, usize), focus: FocusPanel) {
+pub fn render_statusbar(frame: &mut Frame, area: Rect, counts: (usize, usize, usize), focus: FocusWidget) {
     let bar_style = Style::default().bg(BAR_BG);
 
     // Fill background
@@ -174,23 +174,23 @@ pub fn render_statusbar(frame: &mut Frame, area: Rect, counts: (usize, usize, us
         ("w", "Layout"),
     ];
 
-    // Context-specific bindings per focused pane
+    // Context-specific bindings per focused widget
     match focus {
-        FocusPanel::Table => {
+        FocusWidget::Table => {
             bindings.push(("c", "Columns"));
             bindings.push(("Space", "Mark"));
             bindings.push(("a", "Mark All"));
             bindings.push(("x", "Cancel"));
         }
-        FocusPanel::Sidebar => {
+        FocusWidget::Sidebar => {
             bindings.push(("Enter", "Edit/Toggle"));
             bindings.push(("r", "Reset"));
             bindings.push(("Ctrl+S", "Save"));
         }
-        FocusPanel::Stdout | FocusPanel::Stderr => {
+        FocusWidget::Stdout | FocusWidget::Stderr => {
             bindings.push(("PgUp/Dn", "Scroll"));
         }
-        FocusPanel::Script => {}
+        FocusWidget::Script => {}
     }
 
     let mut spans: Vec<Span> = vec![Span::styled("  ", bar_style)];

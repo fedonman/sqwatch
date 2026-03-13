@@ -3,7 +3,7 @@ use std::{fs, path::PathBuf, str::FromStr};
 
 use crate::backend::{JobState, query::QueryParams};
 use crate::views::fields::{JobField, OrderedField, Ordering};
-use crate::views::pane_selector::VisiblePanes;
+use crate::views::widget_selector::VisibleWidgets;
 
 #[derive(Debug, Default, Serialize, Deserialize)]
 pub struct SavedFilters {
@@ -187,11 +187,11 @@ fn layout_path() -> PathBuf {
     base.join("sqwatch").join("layout.json")
 }
 
-pub fn load_layout() -> Option<VisiblePanes> {
+pub fn load_layout() -> Option<VisibleWidgets> {
     let path = layout_path();
     let data = fs::read_to_string(path).ok()?;
     let saved: SavedLayout = serde_json::from_str(&data).ok()?;
-    Some(VisiblePanes {
+    Some(VisibleWidgets {
         filters: saved.filters,
         script: saved.script,
         stdout: saved.stdout,
@@ -199,16 +199,16 @@ pub fn load_layout() -> Option<VisiblePanes> {
     })
 }
 
-pub fn save_layout(panes: &VisiblePanes) -> Result<(), String> {
+pub fn save_layout(widgets: &VisibleWidgets) -> Result<(), String> {
     let path = layout_path();
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent).map_err(|e| format!("Failed to create config dir: {}", e))?;
     }
     let saved = SavedLayout {
-        filters: panes.filters,
-        script: panes.script,
-        stdout: panes.stdout,
-        stderr: panes.stderr,
+        filters: widgets.filters,
+        script: widgets.script,
+        stdout: widgets.stdout,
+        stderr: widgets.stderr,
     };
     let json =
         serde_json::to_string_pretty(&saved).map_err(|e| format!("Failed to serialize: {}", e))?;

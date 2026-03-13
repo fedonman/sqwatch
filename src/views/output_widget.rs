@@ -33,7 +33,7 @@ enum FileState {
     Failed,
 }
 
-pub struct OutputPane {
+pub struct OutputWidget {
     pub job_id: Option<String>,
     pub stream: StreamKind,
     pub content: String,
@@ -46,7 +46,7 @@ pub struct OutputPane {
     fstate: FileState,
 }
 
-impl OutputPane {
+impl OutputWidget {
     pub fn new_for(stream: StreamKind) -> Self {
         Self {
             job_id: None,

@@ -8,7 +8,7 @@ use ratatui::{
 };
 use std::{collections::HashMap, process::Command};
 
-pub struct ScriptPane {
+pub struct ScriptWidget {
     pub job_id: Option<String>,
     pub job_name: Option<String>,
     pub body: String,
@@ -17,7 +17,7 @@ pub struct ScriptPane {
     pub has_bat: bool,
 }
 
-impl ScriptPane {
+impl ScriptWidget {
     pub fn new() -> Self {
         Self {
             job_id: None,

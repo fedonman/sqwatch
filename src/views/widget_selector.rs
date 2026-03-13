@@ -13,40 +13,40 @@ const CHECKED_COLOR: Color = Color::Rgb(80, 200, 255);
 const UNCHECKED_COLOR: Color = Color::Rgb(100, 100, 100);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum PaneKind {
+pub enum WidgetKind {
     Filters,
     Script,
     Stdout,
     Stderr,
 }
 
-impl PaneKind {
+impl WidgetKind {
     pub fn label(&self) -> &'static str {
         match self {
-            PaneKind::Filters => "Filters",
-            PaneKind::Script => "Execution Script",
-            PaneKind::Stdout => "stdout",
-            PaneKind::Stderr => "stderr",
+            WidgetKind::Filters => "Filters",
+            WidgetKind::Script => "Execution Script",
+            WidgetKind::Stdout => "stdout",
+            WidgetKind::Stderr => "stderr",
         }
     }
 }
 
-const PANE_ORDER: [PaneKind; 4] = [
-    PaneKind::Filters,
-    PaneKind::Script,
-    PaneKind::Stdout,
-    PaneKind::Stderr,
+const WIDGET_ORDER: [WidgetKind; 4] = [
+    WidgetKind::Filters,
+    WidgetKind::Script,
+    WidgetKind::Stdout,
+    WidgetKind::Stderr,
 ];
 
 #[derive(Debug, Clone, Copy)]
-pub struct VisiblePanes {
+pub struct VisibleWidgets {
     pub filters: bool,
     pub script: bool,
     pub stdout: bool,
     pub stderr: bool,
 }
 
-impl Default for VisiblePanes {
+impl Default for VisibleWidgets {
     fn default() -> Self {
         Self {
             filters: false,
@@ -57,26 +57,26 @@ impl Default for VisiblePanes {
     }
 }
 
-impl VisiblePanes {
-    pub fn is_visible(&self, kind: PaneKind) -> bool {
+impl VisibleWidgets {
+    pub fn is_visible(&self, kind: WidgetKind) -> bool {
         match kind {
-            PaneKind::Filters => self.filters,
-            PaneKind::Script => self.script,
-            PaneKind::Stdout => self.stdout,
-            PaneKind::Stderr => self.stderr,
+            WidgetKind::Filters => self.filters,
+            WidgetKind::Script => self.script,
+            WidgetKind::Stdout => self.stdout,
+            WidgetKind::Stderr => self.stderr,
         }
     }
 
-    pub fn toggle(&mut self, kind: PaneKind) {
+    pub fn toggle(&mut self, kind: WidgetKind) {
         match kind {
-            PaneKind::Filters => self.filters = !self.filters,
-            PaneKind::Script => self.script = !self.script,
-            PaneKind::Stdout => self.stdout = !self.stdout,
-            PaneKind::Stderr => self.stderr = !self.stderr,
+            WidgetKind::Filters => self.filters = !self.filters,
+            WidgetKind::Script => self.script = !self.script,
+            WidgetKind::Stdout => self.stdout = !self.stdout,
+            WidgetKind::Stderr => self.stderr = !self.stderr,
         }
     }
 
-    pub fn right_pane_count(&self) -> usize {
+    pub fn right_widget_count(&self) -> usize {
         [self.script, self.stdout, self.stderr]
             .iter()
             .filter(|&&v| v)
@@ -85,19 +85,19 @@ impl VisiblePanes {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum PaneSelectorAction {
+pub enum WidgetSelectorAction {
     Noop,
     Dismiss,
     Changed,
     Save,
 }
 
-pub struct PaneSelector {
+pub struct WidgetSelector {
     pub visible: bool,
     cursor: usize,
 }
 
-impl PaneSelector {
+impl WidgetSelector {
     pub fn new() -> Self {
         Self {
             visible: false,
@@ -108,39 +108,39 @@ impl PaneSelector {
     pub fn handle_key(
         &mut self,
         key: KeyEvent,
-        panes: &mut VisiblePanes,
-    ) -> PaneSelectorAction {
+        widgets: &mut VisibleWidgets,
+    ) -> WidgetSelectorAction {
         match key.code {
             KeyCode::Char('s') if key.modifiers.contains(KeyModifiers::CONTROL) => {
-                PaneSelectorAction::Save
+                WidgetSelectorAction::Save
             }
-            KeyCode::Esc => PaneSelectorAction::Dismiss,
+            KeyCode::Esc => WidgetSelectorAction::Dismiss,
             KeyCode::Up => {
                 if self.cursor > 0 {
                     self.cursor -= 1;
                 }
-                PaneSelectorAction::Noop
+                WidgetSelectorAction::Noop
             }
             KeyCode::Down => {
-                if self.cursor < PANE_ORDER.len() - 1 {
+                if self.cursor < WIDGET_ORDER.len() - 1 {
                     self.cursor += 1;
                 }
-                PaneSelectorAction::Noop
+                WidgetSelectorAction::Noop
             }
             KeyCode::Enter | KeyCode::Char(' ') => {
-                let kind = PANE_ORDER[self.cursor];
-                panes.toggle(kind);
-                PaneSelectorAction::Changed
+                let kind = WIDGET_ORDER[self.cursor];
+                widgets.toggle(kind);
+                WidgetSelectorAction::Changed
             }
-            _ => PaneSelectorAction::Noop,
+            _ => WidgetSelectorAction::Noop,
         }
     }
 
-    pub fn render(&self, frame: &mut Frame, area: Rect, panes: &VisiblePanes) {
+    pub fn render(&self, frame: &mut Frame, area: Rect, widgets: &VisibleWidgets) {
         frame.render_widget(Clear, area);
 
         let outer = Block::default()
-            .title(Line::from(" \u{25c6} Pane Layout \u{25c6} ").centered())
+            .title(Line::from(" \u{25c6} Widget Layout \u{25c6} ").centered())
             .borders(Borders::ALL)
             .border_type(BorderType::Rounded)
             .border_style(Style::default().fg(ACCENT))
@@ -156,8 +156,8 @@ impl PaneSelector {
         let mut lines: Vec<Line> = Vec::new();
         lines.push(Line::raw(""));
 
-        for (i, kind) in PANE_ORDER.iter().enumerate() {
-            let checked = panes.is_visible(*kind);
+        for (i, kind) in WIDGET_ORDER.iter().enumerate() {
+            let checked = widgets.is_visible(*kind);
             let is_cursor = i == self.cursor;
             let mark = if checked { "\u{25c6}" } else { "\u{25c7}" };
             let color = if checked {
