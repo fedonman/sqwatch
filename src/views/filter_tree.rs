@@ -385,31 +385,35 @@ impl FilterTree {
         let inner = block.inner(area);
         frame.render_widget(block, area);
 
-        if inner.height == 0 || inner.width == 0 {
+        if inner.height < 7 || inner.width < 4 {
             return;
         }
 
-        let max_val_w = (inner.width as usize).saturating_sub(6);
+        // ── Text input blocks at the top (3 rows each) ──
+        let user_area = Rect {
+            x: inner.x,
+            y: inner.y,
+            width: inner.width,
+            height: 3,
+        };
+        let name_area = Rect {
+            x: inner.x,
+            y: inner.y + 3,
+            width: inner.width,
+            height: 3,
+        };
+        self.render_input_block(frame, user_area, "Username", &self.user_input, self.user_ok, focused && self.focus == Focus::UserField);
+        self.render_input_block(frame, name_area, "Job Name", &self.name_input, self.name_ok, focused && self.focus == Focus::NameField);
+
+        // ── Section items in the remaining space ──
+        let list_area = Rect {
+            x: inner.x,
+            y: inner.y + 6,
+            width: inner.width,
+            height: inner.height - 6,
+        };
+
         let mut lines: Vec<Line> = Vec::new();
-
-        // ── Text fields at the top ──
-        lines.push(self.render_text_field(
-            "usr",
-            &self.user_input,
-            self.user_ok,
-            focused && self.focus == Focus::UserField,
-            max_val_w,
-        ));
-        lines.push(self.render_text_field(
-            "job",
-            &self.name_input,
-            self.name_ok,
-            focused && self.focus == Focus::NameField,
-            max_val_w,
-        ));
-        lines.push(Line::raw(""));
-
-        // ── Section items ──
         for (si, sec) in SECTION_ORDER.iter().enumerate() {
             let header = match sec {
                 Section::States => "States",
@@ -434,7 +438,7 @@ impl FilterTree {
                 let mark = if *checked { "\u{25c6}" } else { "\u{25c7}" };
                 let color = if *checked { CHECKED_COLOR } else { UNCHECKED_COLOR };
 
-                let item_label = truncate(label, inner.width as usize - 5);
+                let item_label = truncate(label, list_area.width as usize - 5);
                 let text = format!("  {} {}", mark, item_label);
 
                 let mut style = Style::default().fg(color);
@@ -448,9 +452,9 @@ impl FilterTree {
             }
         }
 
-        // Scroll to keep cursor visible
-        let cursor_line = self.cursor_line(known_states, known_partitions, known_qos, known_nodes);
-        let visible_height = inner.height as usize;
+        // Scroll to keep section cursor visible
+        let cursor_line = self.section_cursor_line(known_states, known_partitions, known_qos, known_nodes);
+        let visible_height = list_area.height as usize;
         let scroll = if cursor_line >= visible_height {
             cursor_line - visible_height + 1
         } else {
@@ -458,81 +462,90 @@ impl FilterTree {
         };
 
         let widget = Paragraph::new(lines).scroll((scroll as u16, 0));
-        frame.render_widget(widget, inner);
+        frame.render_widget(widget, list_area);
 
         // Show blinking cursor when editing a text field
         if focused && self.editing {
-            let (input, line_idx) = match self.focus {
-                Focus::UserField => (&self.user_input, 0usize),
-                Focus::NameField => (&self.name_input, 1usize),
+            let (input, field_area) = match self.focus {
+                Focus::UserField => (&self.user_input, user_area),
+                Focus::NameField => (&self.name_input, name_area),
                 _ => return,
             };
-            if line_idx >= scroll {
-                let y = inner.y + (line_idx - scroll) as u16;
-                let x = inner.x + 6 + input.len().min(max_val_w) as u16;
-                if y < inner.y + inner.height && x < inner.x + inner.width {
-                    frame.set_cursor_position(Position { x, y });
-                }
+            // Cursor inside the block: 1 for left border + text length
+            let inner_w = field_area.width.saturating_sub(2) as usize;
+            let x = field_area.x + 1 + input.len().min(inner_w) as u16;
+            let y = field_area.y + 1;
+            if x < field_area.x + field_area.width - 1 {
+                frame.set_cursor_position(Position { x, y });
             }
         }
     }
 
-    fn render_text_field(
+    fn render_input_block(
         &self,
-        label: &str,
+        frame: &mut Frame,
+        area: Rect,
+        title: &str,
         value: &str,
         valid: Option<bool>,
         is_focused: bool,
-        max_w: usize,
-    ) -> Line<'static> {
-        let display = truncate(value, max_w);
-        let text = format!(" {}: {}", label, display);
-
-        let style = if is_focused {
-            if valid == Some(false) {
-                Style::default().fg(INVALID_COLOR).add_modifier(Modifier::BOLD)
-            } else {
-                Style::default().fg(Color::White).add_modifier(Modifier::BOLD)
-            }
+    ) {
+        let border_color = if is_focused {
+            if valid == Some(false) { INVALID_COLOR } else { ACCENT }
         } else if valid == Some(false) {
-            Style::default().fg(INVALID_COLOR)
-        } else if !value.is_empty() {
-            Style::default().fg(INPUT_COLOR)
+            INVALID_COLOR
         } else {
-            Style::default().fg(UNCHECKED_COLOR)
+            DIM_BORDER
         };
 
-        Line::from(Span::styled(text, style))
+        let blk = Block::default()
+            .title(format!(" {} ", title))
+            .borders(Borders::ALL)
+            .border_type(BorderType::Rounded)
+            .border_style(Style::default().fg(border_color));
+
+        let text_color = if is_focused {
+            Color::White
+        } else if !value.is_empty() {
+            INPUT_COLOR
+        } else {
+            UNCHECKED_COLOR
+        };
+
+        let inner_w = area.width.saturating_sub(2) as usize;
+        let display = truncate(value, inner_w);
+
+        let widget = Paragraph::new(display.to_string())
+            .style(Style::default().fg(text_color))
+            .block(blk);
+        frame.render_widget(widget, area);
     }
 
-    fn cursor_line(
+    /// Cursor line within the section list only (for scroll calculation).
+    fn section_cursor_line(
         &self,
         known_states: &[JobState],
         known_partitions: &[String],
         known_qos: &[String],
         known_nodes: &[String],
     ) -> usize {
-        match self.focus {
-            Focus::UserField => 0,
-            Focus::NameField => 1,
-            Focus::SectionItem => {
-                // 2 text fields + 1 blank separator = offset 3
-                let mut pos = 3;
-                for sec in SECTION_ORDER.iter().take(self.section_idx) {
-                    pos += 1; // header
-                    pos += self.section_len(
-                        *sec,
-                        known_states,
-                        known_partitions,
-                        known_qos,
-                        known_nodes,
-                    );
-                }
-                pos += 1; // current section header
-                pos += self.item_idx;
-                pos
-            }
+        if self.focus != Focus::SectionItem {
+            return 0;
         }
+        let mut pos = 0;
+        for sec in SECTION_ORDER.iter().take(self.section_idx) {
+            pos += 1; // header
+            pos += self.section_len(
+                *sec,
+                known_states,
+                known_partitions,
+                known_qos,
+                known_nodes,
+            );
+        }
+        pos += 1; // current section header
+        pos += self.item_idx;
+        pos
     }
 
     fn section_items_checked(
