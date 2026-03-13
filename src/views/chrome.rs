@@ -108,7 +108,6 @@ pub fn build_frame(frame: &mut Frame, panes: &VisiblePanes) -> FrameLayout {
 pub fn render_titlebar(
     frame: &mut Frame,
     area: Rect,
-    filters: &str,
     username: &str,
     flash: Option<&str>,
 ) {
@@ -121,18 +120,12 @@ pub fn render_titlebar(
     let mid_y = area.y + area.height / 2;
     let row = Rect { x: area.x, y: mid_y, width: area.width, height: 1 };
 
-    // Left side: brand + separator + filters
+    // Left side: brand + optional flash
     let mut left_spans = vec![
         Span::styled("  sqwatch ", Style::default().fg(ACCENT).bg(BAR_BG).bold()),
         Span::styled("- SLURM Queue Watcher ", Style::default().fg(Color::Rgb(140, 140, 140)).bg(BAR_BG)),
-        Span::styled(" \u{2502} ", Style::default().fg(Color::DarkGray).bg(BAR_BG)),
-        Span::styled(
-            filters,
-            Style::default().fg(Color::Rgb(180, 180, 180)).bg(BAR_BG),
-        ),
     ];
 
-    // Flash text after filters
     if let Some(msg) = flash {
         left_spans.push(Span::styled(" \u{2502} ", Style::default().fg(Color::DarkGray).bg(BAR_BG)));
         left_spans.push(Span::styled(

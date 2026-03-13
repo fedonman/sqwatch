@@ -3,6 +3,7 @@ use std::{fs, path::PathBuf, str::FromStr};
 
 use crate::backend::{JobState, query::QueryParams};
 use crate::views::fields::{JobField, OrderedField, Ordering};
+use crate::views::pane_selector::VisiblePanes;
 
 #[derive(Debug, Default, Serialize, Deserialize)]
 pub struct SavedFilters {
@@ -157,6 +158,58 @@ pub fn save_columns(active: &[JobField], sort_list: &[OrderedField]) -> Result<(
         fs::create_dir_all(parent).map_err(|e| format!("Failed to create config dir: {}", e))?;
     }
     let saved = SavedColumns::from_fields(active, sort_list);
+    let json =
+        serde_json::to_string_pretty(&saved).map_err(|e| format!("Failed to serialize: {}", e))?;
+    fs::write(&path, json).map_err(|e| format!("Failed to write {}: {}", path.display(), e))
+}
+
+// --- Layout settings persistence ---
+
+#[derive(Debug, Default, Serialize, Deserialize)]
+struct SavedLayout {
+    #[serde(default)]
+    pub filters: bool,
+    #[serde(default)]
+    pub script: bool,
+    #[serde(default)]
+    pub stdout: bool,
+    #[serde(default)]
+    pub stderr: bool,
+}
+
+fn layout_path() -> PathBuf {
+    let base = std::env::var("XDG_CONFIG_HOME")
+        .map(PathBuf::from)
+        .unwrap_or_else(|_| {
+            let home = std::env::var("HOME").unwrap_or_else(|_| ".".into());
+            PathBuf::from(home).join(".config")
+        });
+    base.join("sqwatch").join("layout.json")
+}
+
+pub fn load_layout() -> Option<VisiblePanes> {
+    let path = layout_path();
+    let data = fs::read_to_string(path).ok()?;
+    let saved: SavedLayout = serde_json::from_str(&data).ok()?;
+    Some(VisiblePanes {
+        filters: saved.filters,
+        script: saved.script,
+        stdout: saved.stdout,
+        stderr: saved.stderr,
+    })
+}
+
+pub fn save_layout(panes: &VisiblePanes) -> Result<(), String> {
+    let path = layout_path();
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent).map_err(|e| format!("Failed to create config dir: {}", e))?;
+    }
+    let saved = SavedLayout {
+        filters: panes.filters,
+        script: panes.script,
+        stdout: panes.stdout,
+        stderr: panes.stderr,
+    };
     let json =
         serde_json::to_string_pretty(&saved).map_err(|e| format!("Failed to serialize: {}", e))?;
     fs::write(&path, json).map_err(|e| format!("Failed to write {}: {}", path.display(), e))

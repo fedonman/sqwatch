@@ -1,4 +1,4 @@
-use crossterm::event::{KeyCode, KeyEvent};
+use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use ratatui::{
     Frame,
     layout::Rect,
@@ -89,6 +89,7 @@ pub enum PaneSelectorAction {
     Noop,
     Dismiss,
     Changed,
+    Save,
 }
 
 pub struct PaneSelector {
@@ -110,6 +111,9 @@ impl PaneSelector {
         panes: &mut VisiblePanes,
     ) -> PaneSelectorAction {
         match key.code {
+            KeyCode::Char('s') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+                PaneSelectorAction::Save
+            }
             KeyCode::Esc => PaneSelectorAction::Dismiss,
             KeyCode::Up => {
                 if self.cursor > 0 {
@@ -173,7 +177,7 @@ impl PaneSelector {
 
         lines.push(Line::raw(""));
 
-        let hint = " \u{2191}\u{2193}: Navigate | Enter: Toggle | Esc: Close";
+        let hint = " \u{2191}\u{2193}: Navigate | Enter: Toggle | Ctrl+S: Save | Esc: Close";
         lines.push(Line::from(Span::styled(
             hint,
             Style::default().fg(Color::DarkGray),

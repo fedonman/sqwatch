@@ -17,7 +17,7 @@ use crate::{
         query::{QueryParams, fetch_jobs},
     },
     core::{
-        config::{load_columns, load_filters, save_columns, save_filters},
+        config::{load_columns, load_filters, load_layout, save_columns, save_filters, save_layout},
         input::{InputConfig, InputLoop, Signal},
     },
     views::{
@@ -110,7 +110,7 @@ impl Dashboard {
             script: ScriptPane::new(),
             filter_tree: FilterTree::new(),
             pane_sel: PaneSelector::new(),
-            visible_panes: VisiblePanes::default(),
+            visible_panes: load_layout().unwrap_or_default(),
             focus: FocusPanel::Table,
             notice: String::new(),
             notice_expires: None,
@@ -317,8 +317,6 @@ impl Dashboard {
     }
 
     fn draw_titlebar(&self, frame: &mut Frame, area: Rect) {
-        let filters = self.filter_summary();
-
         let flash = if let Some(deadline) = self.notice_expires {
             if Instant::now() < deadline {
                 Some(self.notice.as_str())
@@ -329,7 +327,7 @@ impl Dashboard {
             None
         };
 
-        render_titlebar(frame, area, &filters, &self.login_user, flash);
+        render_titlebar(frame, area, &self.login_user, flash);
     }
 
     fn draw_cancel_confirm(&self, frame: &mut Frame, area: Rect) {
@@ -402,6 +400,12 @@ impl Dashboard {
                     // Reset focus if current panel is now hidden
                     if !self.is_panel_visible(self.focus) {
                         self.focus = FocusPanel::Table;
+                    }
+                }
+                PaneSelectorAction::Save => {
+                    match save_layout(&self.visible_panes) {
+                        Ok(_) => self.flash("Layout settings saved".into(), 3),
+                        Err(e) => self.flash(format!("Failed to save layout: {}", e), 3),
                     }
                 }
                 PaneSelectorAction::Noop => {}
