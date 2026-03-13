@@ -241,7 +241,7 @@ impl Dashboard {
 
         // Job table
         self.table
-            .render(frame, layout.table, &self.visible_fields, &self.sort_fields);
+            .render(frame, layout.table, &self.visible_fields, &self.sort_fields, self.focus == FocusPanel::Table);
 
         // Right-side panels (always visible)
         self.script

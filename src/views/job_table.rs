@@ -138,6 +138,7 @@ impl JobTable {
         area: Rect,
         visible: &[JobField],
         sort_fields: &[OrderedField],
+        focused: bool,
     ) {
         if !sort_fields.is_empty() {
             self.sync_sort(visible, sort_fields);
@@ -253,7 +254,7 @@ impl JobTable {
                     .borders(Borders::ALL)
                     .border_type(BorderType::Rounded)
                     .title(caption)
-                    .border_style(Style::default().fg(Color::Rgb(60, 60, 80))),
+                    .border_style(Style::default().fg(if focused { Color::Magenta } else { Color::Rgb(60, 60, 80) })),
             )
             .row_highlight_style(
                 Style::default()
