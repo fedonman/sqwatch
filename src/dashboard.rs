@@ -27,7 +27,6 @@ use crate::{
         job_table::JobTable,
         output_pane::OutputPane,
         script_pane::ScriptPane,
-        search::{SearchAction, SearchDialog},
     },
 };
 
@@ -46,7 +45,6 @@ pub struct Dashboard {
     pub params: QueryParams,
     pub rt: Runtime,
     pub refreshed_at: Instant,
-    pub search_dlg: SearchDialog,
     pub field_sel: FieldSelector,
     pub output: OutputPane,
     pub script: ScriptPane,
@@ -101,7 +99,6 @@ impl Dashboard {
             params,
             rt,
             refreshed_at: Instant::now(),
-            search_dlg: SearchDialog::new(),
             field_sel: FieldSelector::new(visible_fields.clone(), sort_fields.clone()),
             output: OutputPane::new(),
             script: ScriptPane::new(),
@@ -252,12 +249,7 @@ impl Dashboard {
         self.output
             .render_inline(frame, layout.output, self.focus == FocusPanel::Output);
 
-        // Popups (overlays that still exist)
-        if self.search_dlg.visible {
-            let r = popup_rect(frame.area(), 75, 75);
-            self.draw_search(frame, r);
-        }
-
+        // Popups
         if self.field_sel.visible {
             let r = popup_rect(frame.area(), 75, 75);
             self.field_sel.render(frame, r);
@@ -279,18 +271,6 @@ impl Dashboard {
             self.script.clear_job();
             self.output.clear_job();
         }
-    }
-
-    fn draw_search(&mut self, frame: &mut Frame, area: Rect) {
-        self.search_dlg.render(
-            frame,
-            area,
-            &self.params,
-            &self.known_states,
-            &self.known_partitions,
-            &self.known_qos,
-            &self.known_nodes,
-        );
     }
 
     fn draw_statusbar(&self, frame: &mut Frame, area: Rect) {
@@ -405,28 +385,9 @@ impl Dashboard {
             return;
         }
 
-        if self.search_dlg.visible {
-            let action = self.search_dlg.handle_key(
-                key,
-                &mut self.params,
-                &self.known_states,
-                &self.known_partitions,
-                &self.known_qos,
-                &self.known_nodes,
-            );
-            match action {
-                SearchAction::Dismiss => self.search_dlg.visible = false,
-                SearchAction::Confirm => {
-                    if let Err(e) = self.apply_search() {
-                        self.flash(format!("Failed to apply filters: {}", e), 3);
-                    }
-                }
-                SearchAction::Save => match save_filters(&self.params) {
-                    Ok(_) => self.flash("Filter settings saved".into(), 3),
-                    Err(e) => self.flash(format!("Failed to save filters: {}", e), 3),
-                },
-                SearchAction::Noop => {}
-            }
+        // If editing a text field in the sidebar, send all keys there
+        if self.focus == FocusPanel::Sidebar && self.filter_tree.is_editing() {
+            self.on_sidebar_key(key);
             return;
         }
 
@@ -451,16 +412,11 @@ impl Dashboard {
             (_, KeyCode::Char('f')) => {
                 let opened = self.filter_tree.toggle();
                 if opened {
+                    self.filter_tree.sync_from_params(&self.params);
                     self.focus = FocusPanel::Sidebar;
                 } else if self.focus == FocusPanel::Sidebar {
                     self.focus = FocusPanel::Table;
                 }
-                return;
-            }
-            (KeyModifiers::SHIFT, KeyCode::Char('F')) => {
-                // Open full filter popup for regex editing
-                self.search_dlg.visible = true;
-                self.search_dlg.load_from(&self.params);
                 return;
             }
             (_, KeyCode::Char('c')) if self.focus == FocusPanel::Table => {
@@ -594,7 +550,6 @@ impl Dashboard {
 
     fn on_timer(&mut self) {
         if !self.field_sel.visible
-            && !self.search_dlg.visible
             && self.refreshed_at.elapsed().as_secs() >= self.refresh_secs
             && let Err(e) = self.reload_jobs()
         {
