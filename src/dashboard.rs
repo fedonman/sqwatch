@@ -212,27 +212,27 @@ impl Dashboard {
         self.draw_statusbar(frame, regions[2]);
 
         if self.search_dlg.visible {
-            let r = popup_rect(frame.area(), 80, 80);
+            let r = popup_rect(frame.area(), 75, 75);
             self.draw_search(frame, r);
         }
 
         if self.script.visible {
-            let r = popup_rect(frame.area(), 80, 60);
+            let r = popup_rect(frame.area(), 75, 55);
             self.script.render(frame, r);
         }
 
         if self.field_sel.visible {
-            let r = popup_rect(frame.area(), 80, 80);
+            let r = popup_rect(frame.area(), 75, 75);
             self.field_sel.render(frame, r);
         }
 
         if self.output.visible {
-            let r = popup_rect(frame.area(), 80, 80);
+            let r = popup_rect(frame.area(), 75, 75);
             self.output.render(frame, r);
         }
 
         if self.confirming_cancel {
-            let r = popup_rect(frame.area(), 50, 30);
+            let r = popup_rect(frame.area(), 45, 25);
             self.draw_cancel_confirm(frame, r);
         }
     }
@@ -301,12 +301,14 @@ impl Dashboard {
         };
 
         let blk = Block::default()
-            .title(Line::from("Confirm Cancel").centered())
-            .borders(Borders::NONE)
-            .style(Style::default().bg(Color::Black));
+            .title(Line::from(" \u{25c6} Confirm Cancel \u{25c6} ").centered())
+            .borders(Borders::ALL)
+            .border_type(ratatui::widgets::BorderType::Rounded)
+            .border_style(Style::default().fg(Color::Rgb(230, 70, 70)))
+            .style(Style::default().bg(Color::Rgb(15, 15, 30)));
 
         let widget = Paragraph::new(msg)
-            .style(Style::default().fg(Color::Cyan))
+            .style(Style::default().fg(Color::Rgb(255, 170, 50)))
             .block(blk)
             .centered();
 

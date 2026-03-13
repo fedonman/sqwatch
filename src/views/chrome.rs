@@ -2,17 +2,21 @@ use ratatui::{
     Frame,
     layout::{Constraint, Direction, Layout, Rect},
     style::{Color, Style},
-    text::{Line, Span, Text},
+    text::{Line, Span},
     widgets::{Block, Borders, Paragraph},
 };
+
+const BAR_BG: Color = Color::Rgb(30, 30, 50);
+const ACCENT: Color = Color::Magenta;
+const FLASH_COLOR: Color = Color::Rgb(255, 200, 80);
 
 pub fn build_frame(frame: &mut Frame) -> Vec<Rect> {
     let regions = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
-            Constraint::Length(3),
+            Constraint::Length(1),
             Constraint::Min(10),
-            Constraint::Length(3),
+            Constraint::Length(1),
         ])
         .split(frame.area());
 
@@ -26,116 +30,113 @@ pub fn render_titlebar(
     username: &str,
     flash: Option<&str>,
 ) {
-    let brand_width = "sqwatch - SLURM Queue Watcher".len() as u16 + 2;
-    let user_label = "User: ";
-    let user_width = user_label.len() as u16 + username.len() as u16 + 2; // +2 for borders
+    let bar_style = Style::default().bg(BAR_BG);
 
-    let filter_label = "Filters: ";
-    let filter_width = filter_label.len() as u16 + filters.len() as u16 + 2; // +2 for borders
+    let mut spans = vec![
+        Span::styled(" sqwatch ", Style::default().fg(ACCENT).bg(BAR_BG).bold()),
+        Span::styled(" \u{2502} ", Style::default().fg(Color::DarkGray).bg(BAR_BG)),
+    ];
 
-    let sections = Layout::default()
-        .direction(Direction::Horizontal)
-        .constraints([
-            Constraint::Length(brand_width),
-            Constraint::Length(user_width),
-            Constraint::Length(filter_width),
-            Constraint::Min(0),
-        ])
-        .split(area);
+    if let Some(msg) = flash {
+        spans.push(Span::styled(
+            msg,
+            Style::default().fg(FLASH_COLOR).bg(BAR_BG),
+        ));
+    } else {
+        spans.push(Span::styled(
+            filters,
+            Style::default().fg(Color::Rgb(180, 180, 180)).bg(BAR_BG),
+        ));
+    }
 
-    let brand = Paragraph::new(Text::from(vec![Line::from(vec![
-        Span::styled("sqwatch", Style::default().fg(Color::Cyan).bold()),
-        Span::raw(" - "),
-        Span::styled("SLURM Queue Watcher", Style::default().fg(Color::White)),
-    ])]))
-    .block(Block::default().borders(Borders::ALL));
+    let widget = Paragraph::new(Line::from(spans))
+        .style(bar_style)
+        .block(Block::default().borders(Borders::NONE));
 
-    frame.render_widget(brand, sections[0]);
+    frame.render_widget(widget, area);
 
-    let user_box = Paragraph::new(Line::from(vec![
-        Span::styled(user_label, Style::default().fg(Color::White)),
-        Span::styled(username, Style::default().fg(Color::Yellow)),
-    ]))
-    .block(Block::default().borders(Borders::ALL));
-
-    frame.render_widget(user_box, sections[1]);
-
-    let filter_bar = Paragraph::new(Line::from(vec![
-        Span::styled("Filters: ", Style::default().fg(Color::White)),
-        Span::raw(filters),
-    ]))
-    .block(Block::default().borders(Borders::ALL));
-
-    frame.render_widget(filter_bar, sections[2]);
-
-    let flash_content = flash.unwrap_or("");
-    let flash_bar = Paragraph::new(Line::from(vec![Span::styled(
-        flash_content,
-        Style::default().fg(Color::Yellow),
-    )]))
-    .block(Block::default().borders(Borders::ALL));
-
-    frame.render_widget(flash_bar, sections[3]);
+    // Right-aligned user info
+    let user_text = format!("{} ", username);
+    let user_width = user_text.len() as u16;
+    if area.width > user_width + 2 {
+        let user_area = Rect {
+            x: area.x + area.width - user_width,
+            y: area.y,
+            width: user_width,
+            height: 1,
+        };
+        let user_widget = Paragraph::new(Line::from(vec![Span::styled(
+            user_text,
+            Style::default().fg(Color::Green).bg(BAR_BG),
+        )]))
+        .style(bar_style);
+        frame.render_widget(user_widget, user_area);
+    }
 }
 
 pub fn render_statusbar(frame: &mut Frame, area: Rect, counts: (usize, usize, usize)) {
-    let accent = Style::default().fg(Color::Cyan);
+    let bar_style = Style::default().bg(BAR_BG);
+
     let bindings = [
         ("Esc", "Quit"),
-        ("\u{2191}/\u{2193}", "Navigate"),
-        // ("Space", "Select"),
-        ("f", "Toggle Filters"),
-        ("c", "Toggle Columns"),
-        ("v", "Inspect Logs"),
-        ("s", "Inspect Script"),
-        // ("a", "SelectAll"),
-        // ("x", "Cancel"),
+        ("\u{2191}\u{2193}", "Nav"),
+        ("f", "Filter"),
+        ("c", "Columns"),
+        ("v", "Logs"),
+        ("s", "Script"),
     ];
 
-    let key_spans: Vec<Span> = bindings
-        .iter()
-        .flat_map(|(k, desc)| {
-            vec![
-                Span::styled(*k, accent),
-                Span::raw(": "),
-                Span::raw(*desc),
-                Span::raw(" "),
-            ]
-        })
-        .collect();
+    let mut spans: Vec<Span> = vec![Span::styled(" ", bar_style)];
+    for (k, desc) in bindings {
+        spans.push(Span::styled(
+            k,
+            Style::default().fg(ACCENT).bg(BAR_BG),
+        ));
+        spans.push(Span::styled(
+            format!(" {} ", desc),
+            Style::default().fg(Color::Rgb(140, 140, 140)).bg(BAR_BG),
+        ));
+    }
 
-    let stat_spans = vec![
-        Span::styled("Jobs: ", accent),
-        Span::styled(
-            format!("P[ {} ] ", counts.0),
-            Style::default().fg(Color::Yellow),
-        ),
-        Span::styled(
-            format!("R[ {} ] ", counts.1),
-            Style::default().fg(Color::Green),
-        ),
-        Span::styled(
-            format!("Other[ {} ]", counts.2),
-            Style::default().fg(Color::Blue),
-        ),
-    ];
+    let widget = Paragraph::new(Line::from(spans))
+        .style(bar_style)
+        .block(Block::default().borders(Borders::NONE));
 
-    // Calculate stat width for right-aligned box
-    let stat_text_len: usize = stat_spans.iter().map(|s| s.width()).sum();
-    let stat_width = stat_text_len as u16 + 2; // +2 for borders
+    frame.render_widget(widget, area);
 
-    let sections = Layout::default()
-        .direction(Direction::Horizontal)
-        .constraints([Constraint::Min(0), Constraint::Length(stat_width)])
-        .split(area);
-
-    let keys_bar =
-        Paragraph::new(Line::from(key_spans)).block(Block::default().borders(Borders::ALL));
-    frame.render_widget(keys_bar, sections[0]);
-
-    let stat_bar =
-        Paragraph::new(Line::from(stat_spans)).block(Block::default().borders(Borders::ALL));
-    frame.render_widget(stat_bar, sections[1]);
+    // Right-aligned stats
+    let stat_text = format!(
+        " P:{} R:{} O:{} ",
+        counts.0, counts.1, counts.2
+    );
+    let stat_width = stat_text.len() as u16;
+    if area.width > stat_width + 2 {
+        let stat_area = Rect {
+            x: area.x + area.width - stat_width,
+            y: area.y,
+            width: stat_width,
+            height: 1,
+        };
+        let stat_spans = vec![
+            Span::styled("P:", Style::default().fg(Color::Rgb(255, 170, 50)).bg(BAR_BG)),
+            Span::styled(
+                format!("{} ", counts.0),
+                Style::default().fg(Color::Rgb(255, 170, 50)).bg(BAR_BG),
+            ),
+            Span::styled("R:", Style::default().fg(Color::Rgb(50, 210, 170)).bg(BAR_BG)),
+            Span::styled(
+                format!("{} ", counts.1),
+                Style::default().fg(Color::Rgb(50, 210, 170)).bg(BAR_BG),
+            ),
+            Span::styled("O:", Style::default().fg(Color::Rgb(120, 140, 180)).bg(BAR_BG)),
+            Span::styled(
+                format!("{} ", counts.2),
+                Style::default().fg(Color::Rgb(120, 140, 180)).bg(BAR_BG),
+            ),
+        ];
+        let stat_widget = Paragraph::new(Line::from(stat_spans)).style(bar_style);
+        frame.render_widget(stat_widget, stat_area);
+    }
 }
 
 pub fn popup_rect(parent: Rect, pct_w: u16, pct_h: u16) -> Rect {

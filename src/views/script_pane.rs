@@ -4,7 +4,7 @@ use ratatui::{
     layout::Rect,
     style::{Color, Modifier, Style},
     text::{Line, Span, Text},
-    widgets::{Block, Borders, Clear, Paragraph, Wrap},
+    widgets::{Block, BorderType, Borders, Clear, Paragraph, Wrap},
 };
 use std::{collections::HashMap, process::Command};
 
@@ -75,7 +75,9 @@ impl ScriptPane {
                 Block::default()
                     .title(format!("{}{}", title, keys))
                     .borders(Borders::ALL)
-                    .border_style(Style::default().fg(Color::Cyan)),
+                    .border_type(BorderType::Rounded)
+                    .border_style(Style::default().fg(Color::Magenta))
+                    .style(Style::default().bg(Color::Rgb(15, 15, 30))),
             )
             .wrap(Wrap { trim: false })
             .scroll((self.scroll_pos as u16, 0));

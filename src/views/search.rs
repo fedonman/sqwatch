@@ -4,11 +4,15 @@ use ratatui::{
     layout::{Constraint, Direction, Layout, Position, Rect},
     style::{Color, Modifier, Style},
     text::Line,
-    widgets::{Block, Borders, Clear, List, ListItem, ListState, Paragraph},
+    widgets::{Block, BorderType, Borders, Clear, List, ListItem, ListState, Paragraph},
 };
 use regex::Regex;
 
 use crate::backend::{JobState, query::QueryParams};
+
+const POPUP_BG: Color = Color::Rgb(15, 15, 30);
+const ACCENT: Color = Color::Magenta;
+const CHECKED_COLOR: Color = Color::Rgb(80, 200, 255);
 
 pub struct SearchDialog {
     pub tab_idx: usize,
@@ -108,9 +112,11 @@ impl SearchDialog {
         frame.render_widget(Clear, area);
 
         let outer = Block::default()
-            .title(Line::from("Filter Jobs").centered())
-            .borders(Borders::NONE)
-            .style(Style::default().bg(Color::Black));
+            .title(Line::from(" \u{25c6} Filter Jobs \u{25c6} ").centered())
+            .borders(Borders::ALL)
+            .border_type(BorderType::Rounded)
+            .border_style(Style::default().fg(ACCENT))
+            .style(Style::default().bg(POPUP_BG));
         frame.render_widget(outer.clone(), area);
 
         let rows = Layout::default()
@@ -142,8 +148,13 @@ impl SearchDialog {
 
         let hint = "\u{2190}/\u{2192}: Switch | \u{2191}/\u{2193}: Navigate | Enter: Select/Apply | r: Reset | Ctrl+S: Save | Esc: Close";
         let help = Paragraph::new(hint)
-            .style(Style::default().fg(Color::Gray))
-            .block(Block::default().borders(Borders::ALL));
+            .style(Style::default().fg(Color::DarkGray))
+            .block(
+                Block::default()
+                    .borders(Borders::ALL)
+                    .border_type(BorderType::Rounded)
+                    .border_style(Style::default().fg(Color::Rgb(50, 50, 70))),
+            );
         frame.render_widget(help, rows[2]);
     }
 
@@ -160,17 +171,20 @@ impl SearchDialog {
             Some(false) => "Username (regex) \u{2717} Invalid",
             None => "Username (regex)",
         };
-        let u_style = match (self.focus == SearchFocus::Username, self.user_ok) {
-            (true, _) => Style::default().fg(Color::Cyan),
-            (_, Some(false)) => Style::default().fg(Color::Red),
-            _ => Style::default(),
+        let u_border_color = match (self.focus == SearchFocus::Username, self.user_ok) {
+            (true, _) => ACCENT,
+            (_, Some(false)) => Color::Rgb(230, 70, 70),
+            _ => Color::Rgb(50, 50, 70),
         };
         let u_block = Block::default()
             .title(u_title)
             .borders(Borders::ALL)
-            .style(u_style);
+            .border_type(BorderType::Rounded)
+            .border_style(Style::default().fg(u_border_color));
         frame.render_widget(
-            Paragraph::new(self.user_input.clone()).block(u_block),
+            Paragraph::new(self.user_input.clone())
+                .style(Style::default().fg(Color::White))
+                .block(u_block),
             cells[0],
         );
 
@@ -180,17 +194,20 @@ impl SearchDialog {
             Some(false) => "Job Name (regex) \u{2717} Invalid",
             None => "Job Name (regex)",
         };
-        let n_style = match (self.focus == SearchFocus::NamePattern, self.name_ok) {
-            (true, _) => Style::default().fg(Color::Cyan),
-            (_, Some(false)) => Style::default().fg(Color::Red),
-            _ => Style::default(),
+        let n_border_color = match (self.focus == SearchFocus::NamePattern, self.name_ok) {
+            (true, _) => ACCENT,
+            (_, Some(false)) => Color::Rgb(230, 70, 70),
+            _ => Color::Rgb(50, 50, 70),
         };
         let n_block = Block::default()
             .title(n_title)
             .borders(Borders::ALL)
-            .style(n_style);
+            .border_type(BorderType::Rounded)
+            .border_style(Style::default().fg(n_border_color));
         frame.render_widget(
-            Paragraph::new(self.name_pattern.clone()).block(n_block),
+            Paragraph::new(self.name_pattern.clone())
+                .style(Style::default().fg(Color::White))
+                .block(n_block),
             cells[1],
         );
 
@@ -219,28 +236,34 @@ impl SearchDialog {
         params: &QueryParams,
         choices: &[JobState],
     ) {
+        let focused = self.focus == SearchFocus::States;
         let block = Block::default()
             .title("Job States")
             .borders(Borders::ALL)
-            .style(if self.focus == SearchFocus::States {
-                Style::default().fg(Color::Cyan)
+            .border_type(BorderType::Rounded)
+            .border_style(Style::default().fg(if focused {
+                ACCENT
             } else {
-                Style::default()
-            });
+                Color::Rgb(50, 50, 70)
+            }));
 
         let items: Vec<ListItem> = choices
             .iter()
             .map(|st| {
                 let on = params.statuses.contains(st);
-                let mark = if on { "[X] " } else { "[ ] " };
-                let c = if on { Color::Green } else { Color::White };
+                let mark = if on { "\u{25c6} " } else { "\u{25c7} " };
+                let c = if on { CHECKED_COLOR } else { Color::Rgb(140, 140, 140) };
                 ListItem::new(Line::from(format!("{}{}", mark, st))).style(Style::default().fg(c))
             })
             .collect();
 
         let widget = List::new(items)
             .block(block)
-            .highlight_style(Style::default().add_modifier(Modifier::BOLD));
+            .highlight_style(
+                Style::default()
+                    .add_modifier(Modifier::BOLD)
+                    .fg(Color::White),
+            );
         frame.render_stateful_widget(widget, area, &mut self.status_cursor);
     }
 
@@ -251,28 +274,34 @@ impl SearchDialog {
         params: &QueryParams,
         choices: &[String],
     ) {
+        let focused = self.focus == SearchFocus::Partitions;
         let block = Block::default()
             .title("Partitions")
             .borders(Borders::ALL)
-            .style(if self.focus == SearchFocus::Partitions {
-                Style::default().fg(Color::Cyan)
+            .border_type(BorderType::Rounded)
+            .border_style(Style::default().fg(if focused {
+                ACCENT
             } else {
-                Style::default()
-            });
+                Color::Rgb(50, 50, 70)
+            }));
 
         let items: Vec<ListItem> = choices
             .iter()
             .map(|p| {
                 let on = params.partitions.contains(p);
-                let mark = if on { "[X] " } else { "[ ] " };
-                let c = if on { Color::Green } else { Color::White };
+                let mark = if on { "\u{25c6} " } else { "\u{25c7} " };
+                let c = if on { CHECKED_COLOR } else { Color::Rgb(140, 140, 140) };
                 ListItem::new(Line::from(format!("{}{}", mark, p))).style(Style::default().fg(c))
             })
             .collect();
 
         let widget = List::new(items)
             .block(block)
-            .highlight_style(Style::default().add_modifier(Modifier::BOLD));
+            .highlight_style(
+                Style::default()
+                    .add_modifier(Modifier::BOLD)
+                    .fg(Color::White),
+            );
         frame.render_stateful_widget(widget, area, &mut self.partition_cursor);
     }
 
@@ -283,28 +312,34 @@ impl SearchDialog {
         params: &QueryParams,
         choices: &[String],
     ) {
+        let focused = self.focus == SearchFocus::QoS;
         let block = Block::default()
             .title("Quality of Service")
             .borders(Borders::ALL)
-            .style(if self.focus == SearchFocus::QoS {
-                Style::default().fg(Color::Cyan)
+            .border_type(BorderType::Rounded)
+            .border_style(Style::default().fg(if focused {
+                ACCENT
             } else {
-                Style::default()
-            });
+                Color::Rgb(50, 50, 70)
+            }));
 
         let items: Vec<ListItem> = choices
             .iter()
             .map(|q| {
                 let on = params.qos.contains(q);
-                let mark = if on { "[X] " } else { "[ ] " };
-                let c = if on { Color::Green } else { Color::White };
+                let mark = if on { "\u{25c6} " } else { "\u{25c7} " };
+                let c = if on { CHECKED_COLOR } else { Color::Rgb(140, 140, 140) };
                 ListItem::new(Line::from(format!("{}{}", mark, q))).style(Style::default().fg(c))
             })
             .collect();
 
         let widget = List::new(items)
             .block(block)
-            .highlight_style(Style::default().add_modifier(Modifier::BOLD));
+            .highlight_style(
+                Style::default()
+                    .add_modifier(Modifier::BOLD)
+                    .fg(Color::White),
+            );
         frame.render_stateful_widget(widget, area, &mut self.qos_cursor);
     }
 
@@ -315,27 +350,34 @@ impl SearchDialog {
         params: &QueryParams,
         choices: &[String],
     ) {
-        let block = Block::default().title("Nodes").borders(Borders::ALL).style(
-            if self.focus == SearchFocus::Nodes {
-                Style::default().fg(Color::Cyan)
+        let focused = self.focus == SearchFocus::Nodes;
+        let block = Block::default()
+            .title("Nodes")
+            .borders(Borders::ALL)
+            .border_type(BorderType::Rounded)
+            .border_style(Style::default().fg(if focused {
+                ACCENT
             } else {
-                Style::default()
-            },
-        );
+                Color::Rgb(50, 50, 70)
+            }));
 
         let items: Vec<ListItem> = choices
             .iter()
             .map(|n| {
                 let on = params.nodes.contains(n);
-                let mark = if on { "[X] " } else { "[ ] " };
-                let c = if on { Color::Green } else { Color::White };
+                let mark = if on { "\u{25c6} " } else { "\u{25c7} " };
+                let c = if on { CHECKED_COLOR } else { Color::Rgb(140, 140, 140) };
                 ListItem::new(Line::from(format!("{}{}", mark, n))).style(Style::default().fg(c))
             })
             .collect();
 
         let widget = List::new(items)
             .block(block)
-            .highlight_style(Style::default().add_modifier(Modifier::BOLD));
+            .highlight_style(
+                Style::default()
+                    .add_modifier(Modifier::BOLD)
+                    .fg(Color::White),
+            );
         frame.render_stateful_widget(widget, area, &mut self.node_cursor);
     }
 
