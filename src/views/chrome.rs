@@ -8,6 +8,7 @@ use ratatui::{
 
 use crate::dashboard::FocusPanel;
 use crate::views::filter_tree::SIDEBAR_WIDTH;
+use crate::views::pane_selector::VisiblePanes;
 
 const BAR_BG: Color = Color::Rgb(30, 30, 50);
 const ACCENT: Color = Color::Magenta;
@@ -17,12 +18,13 @@ pub struct FrameLayout {
     pub titlebar: Rect,
     pub sidebar: Option<Rect>,
     pub table: Rect,
-    pub script: Rect,
-    pub output: Rect,
+    pub script: Option<Rect>,
+    pub stdout: Option<Rect>,
+    pub stderr: Option<Rect>,
     pub statusbar: Rect,
 }
 
-pub fn build_frame(frame: &mut Frame, sidebar_open: bool) -> FrameLayout {
+pub fn build_frame(frame: &mut Frame, panes: &VisiblePanes) -> FrameLayout {
     let rows = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
@@ -36,37 +38,69 @@ pub fn build_frame(frame: &mut Frame, sidebar_open: bool) -> FrameLayout {
     let statusbar = rows[2];
     let content = rows[1];
 
-    // Split content into columns: [sidebar?] | table | right-panels
-    let (sidebar, table_area, right_area) = if sidebar_open {
+    // Split off sidebar if visible
+    let (sidebar, remaining) = if panes.filters {
         let cols = Layout::default()
             .direction(Direction::Horizontal)
             .constraints([
                 Constraint::Length(SIDEBAR_WIDTH),
-                Constraint::Percentage(50),
-                Constraint::Min(25),
+                Constraint::Min(10),
             ])
             .split(content);
-        (Some(cols[0]), cols[1], cols[2])
+        (Some(cols[0]), cols[1])
     } else {
-        let cols = Layout::default()
-            .direction(Direction::Horizontal)
-            .constraints([Constraint::Percentage(60), Constraint::Min(25)])
-            .split(content);
-        (None, cols[0], cols[1])
+        (None, content)
     };
 
-    // Split right area into script (top) and output (bottom)
-    let right_split = Layout::default()
-        .direction(Direction::Vertical)
-        .constraints([Constraint::Percentage(45), Constraint::Percentage(55)])
-        .split(right_area);
+    // Split remaining into table and right area (50/50) if any right panes exist
+    let right_count = panes.right_pane_count();
+    let (table_area, right_area) = if right_count > 0 {
+        let cols = Layout::default()
+            .direction(Direction::Horizontal)
+            .constraints([
+                Constraint::Percentage(50),
+                Constraint::Percentage(50),
+            ])
+            .split(remaining);
+        (cols[0], Some(cols[1]))
+    } else {
+        (remaining, None)
+    };
+
+    // Split right area vertically among visible right panes
+    let (mut script_rect, mut stdout_rect, mut stderr_rect) = (None, None, None);
+
+    if let Some(right) = right_area {
+        let constraints: Vec<Constraint> = (0..right_count)
+            .map(|_| Constraint::Ratio(1, right_count as u32))
+            .collect();
+
+        let parts = Layout::default()
+            .direction(Direction::Vertical)
+            .constraints(constraints)
+            .split(right);
+
+        let mut idx = 0;
+        if panes.script {
+            script_rect = Some(parts[idx]);
+            idx += 1;
+        }
+        if panes.stdout {
+            stdout_rect = Some(parts[idx]);
+            idx += 1;
+        }
+        if panes.stderr {
+            stderr_rect = Some(parts[idx]);
+        }
+    }
 
     FrameLayout {
         titlebar,
         sidebar,
         table: table_area,
-        script: right_split[0],
-        output: right_split[1],
+        script: script_rect,
+        stdout: stdout_rect,
+        stderr: stderr_rect,
         statusbar,
     }
 }
@@ -144,7 +178,7 @@ pub fn render_statusbar(frame: &mut Frame, area: Rect, counts: (usize, usize, us
         ("Esc", "Quit"),
         ("\u{2191}\u{2193}", "Nav"),
         ("Tab", "Focus"),
-        ("f", "Sidebar"),
+        ("w", "Layout"),
     ];
 
     // Context-specific bindings per focused pane
@@ -160,8 +194,7 @@ pub fn render_statusbar(frame: &mut Frame, area: Rect, counts: (usize, usize, us
             bindings.push(("r", "Reset"));
             bindings.push(("Ctrl+S", "Save"));
         }
-        FocusPanel::Output => {
-            bindings.push(("o", "Toggle Stream"));
+        FocusPanel::Stdout | FocusPanel::Stderr => {
             bindings.push(("PgUp/Dn", "Scroll"));
         }
         FocusPanel::Script => {}

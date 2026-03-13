@@ -19,13 +19,6 @@ pub enum StreamKind {
 }
 
 impl StreamKind {
-    fn swap(&mut self) {
-        *self = match self {
-            StreamKind::Stdout => StreamKind::Stderr,
-            StreamKind::Stderr => StreamKind::Stdout,
-        };
-    }
-
     fn label(&self) -> &'static str {
         match self {
             StreamKind::Stdout => "stdout",
@@ -55,10 +48,10 @@ pub struct OutputPane {
 }
 
 impl OutputPane {
-    pub fn new() -> Self {
+    pub fn new_for(stream: StreamKind) -> Self {
         Self {
             job_id: None,
-            stream: StreamKind::Stdout,
+            stream,
             content: String::new(),
             scroll_pos: 0,
             stdout_file: None,
@@ -85,12 +78,6 @@ impl OutputPane {
             self.data_rx = Some(rx);
         }
 
-        self.refresh_watched_file();
-    }
-
-    pub fn toggle_stream(&mut self) {
-        self.stream.swap();
-        self.scroll_pos = 0;
         self.refresh_watched_file();
     }
 
@@ -221,7 +208,6 @@ impl OutputPane {
 
     pub fn handle_key(&mut self, key: KeyEvent) {
         match (key.modifiers, key.code) {
-            (_, KeyCode::Char('o')) => self.toggle_stream(),
             (_, KeyCode::Up) => self.scroll_up(),
             (_, KeyCode::Down) => self.scroll_down(),
             (_, KeyCode::PageUp) | (KeyModifiers::CONTROL, KeyCode::Char('u')) => self.page_up(),

@@ -25,7 +25,8 @@ use crate::{
         fields::{FieldAction, FieldSelector, JobField, OrderedField, Ordering},
         filter_tree::{FilterTree, FilterTreeAction},
         job_table::JobTable,
-        output_pane::OutputPane,
+        output_pane::{OutputPane, StreamKind},
+        pane_selector::{PaneSelector, PaneSelectorAction, VisiblePanes},
         script_pane::ScriptPane,
     },
 };
@@ -34,7 +35,8 @@ use crate::{
 pub enum FocusPanel {
     Table,
     Script,
-    Output,
+    Stdout,
+    Stderr,
     Sidebar,
 }
 
@@ -46,9 +48,12 @@ pub struct Dashboard {
     pub rt: Runtime,
     pub refreshed_at: Instant,
     pub field_sel: FieldSelector,
-    pub output: OutputPane,
+    pub stdout_pane: OutputPane,
+    pub stderr_pane: OutputPane,
     pub script: ScriptPane,
     pub filter_tree: FilterTree,
+    pub pane_sel: PaneSelector,
+    pub visible_panes: VisiblePanes,
     pub focus: FocusPanel,
     pub notice: String,
     pub notice_expires: Option<Instant>,
@@ -100,9 +105,12 @@ impl Dashboard {
             rt,
             refreshed_at: Instant::now(),
             field_sel: FieldSelector::new(visible_fields.clone(), sort_fields.clone()),
-            output: OutputPane::new(),
+            stdout_pane: OutputPane::new_for(StreamKind::Stdout),
+            stderr_pane: OutputPane::new_for(StreamKind::Stderr),
             script: ScriptPane::new(),
             filter_tree: FilterTree::new(),
+            pane_sel: PaneSelector::new(),
+            visible_panes: VisiblePanes::default(),
             focus: FocusPanel::Table,
             notice: String::new(),
             notice_expires: None,
@@ -217,7 +225,10 @@ impl Dashboard {
     // ── Drawing ──────────────────────────────────────────────
 
     pub fn draw(&mut self, frame: &mut Frame) {
-        let layout = build_frame(frame, self.filter_tree.open);
+        // Sync filter_tree.open with visible_panes
+        self.filter_tree.open = self.visible_panes.filters;
+
+        let layout = build_frame(frame, &self.visible_panes);
 
         self.draw_titlebar(frame, layout.titlebar);
         self.draw_statusbar(frame, layout.statusbar);
@@ -243,13 +254,26 @@ impl Dashboard {
         self.table
             .render(frame, layout.table, &self.visible_fields, &self.sort_fields, self.focus == FocusPanel::Table);
 
-        // Right-side panels (always visible)
-        self.script
-            .render_inline(frame, layout.script, self.focus == FocusPanel::Script);
-        self.output
-            .render_inline(frame, layout.output, self.focus == FocusPanel::Output);
+        // Right-side panels (only visible ones)
+        if let Some(area) = layout.script {
+            self.script
+                .render_inline(frame, area, self.focus == FocusPanel::Script);
+        }
+        if let Some(area) = layout.stdout {
+            self.stdout_pane
+                .render_inline(frame, area, self.focus == FocusPanel::Stdout);
+        }
+        if let Some(area) = layout.stderr {
+            self.stderr_pane
+                .render_inline(frame, area, self.focus == FocusPanel::Stderr);
+        }
 
         // Popups
+        if self.pane_sel.visible {
+            let r = popup_rect(frame.area(), 35, 40);
+            self.pane_sel.render(frame, r, &self.visible_panes);
+        }
+
         if self.field_sel.visible {
             let r = popup_rect(frame.area(), 75, 75);
             self.field_sel.render(frame, r);
@@ -266,10 +290,12 @@ impl Dashboard {
             let id = job.job_id.clone();
             let name = job.name.clone();
             self.script.ensure_job(&id, &name);
-            self.output.ensure_job(&id);
+            self.stdout_pane.ensure_job(&id);
+            self.stderr_pane.ensure_job(&id);
         } else {
             self.script.clear_job();
-            self.output.clear_job();
+            self.stdout_pane.clear_job();
+            self.stderr_pane.clear_job();
         }
     }
 
@@ -361,6 +387,28 @@ impl Dashboard {
             return;
         }
 
+        if self.pane_sel.visible {
+            let action = self.pane_sel.handle_key(key, &mut self.visible_panes);
+            match action {
+                PaneSelectorAction::Dismiss => self.pane_sel.visible = false,
+                PaneSelectorAction::Changed => {
+                    // Sync filter tree state
+                    self.filter_tree.open = self.visible_panes.filters;
+                    if self.visible_panes.filters {
+                        self.filter_tree.sync_from_params(&self.params);
+                    } else {
+                        self.filter_tree.editing = false;
+                    }
+                    // Reset focus if current panel is now hidden
+                    if !self.is_panel_visible(self.focus) {
+                        self.focus = FocusPanel::Table;
+                    }
+                }
+                PaneSelectorAction::Noop => {}
+            }
+            return;
+        }
+
         if self.field_sel.visible {
             let action = self.field_sel.handle_key(key);
             match action {
@@ -409,14 +457,8 @@ impl Dashboard {
                 self.cycle_focus_reverse();
                 return;
             }
-            (_, KeyCode::Char('f')) => {
-                let opened = self.filter_tree.toggle();
-                if opened {
-                    self.filter_tree.sync_from_params(&self.params);
-                    self.focus = FocusPanel::Sidebar;
-                } else if self.focus == FocusPanel::Sidebar {
-                    self.focus = FocusPanel::Table;
-                }
+            (_, KeyCode::Char('w')) => {
+                self.pane_sel.visible = true;
                 return;
             }
             (_, KeyCode::Char('c')) if self.focus == FocusPanel::Table => {
@@ -432,7 +474,8 @@ impl Dashboard {
         match self.focus {
             FocusPanel::Table => self.on_table_key(key),
             FocusPanel::Script => self.on_script_key(key),
-            FocusPanel::Output => self.on_output_key(key),
+            FocusPanel::Stdout => self.on_stdout_key(key),
+            FocusPanel::Stderr => self.on_stderr_key(key),
             FocusPanel::Sidebar => self.on_sidebar_key(key),
         }
     }
@@ -456,12 +499,6 @@ impl Dashboard {
             (_, KeyCode::Char('x')) => {
                 self.confirming_cancel = true;
             }
-            (_, KeyCode::Char('s')) => {
-                self.focus = FocusPanel::Script;
-            }
-            (_, KeyCode::Char('v')) => {
-                self.focus = FocusPanel::Output;
-            }
             _ => {}
         }
     }
@@ -478,7 +515,7 @@ impl Dashboard {
         }
     }
 
-    fn on_output_key(&mut self, key: KeyEvent) {
+    fn on_stdout_key(&mut self, key: KeyEvent) {
         match (key.modifiers, key.code) {
             (KeyModifiers::SHIFT, KeyCode::Up) => {
                 self.table.retreat();
@@ -486,7 +523,19 @@ impl Dashboard {
             (KeyModifiers::SHIFT, KeyCode::Down) => {
                 self.table.advance();
             }
-            _ => self.output.handle_key(key),
+            _ => self.stdout_pane.handle_key(key),
+        }
+    }
+
+    fn on_stderr_key(&mut self, key: KeyEvent) {
+        match (key.modifiers, key.code) {
+            (KeyModifiers::SHIFT, KeyCode::Up) => {
+                self.table.retreat();
+            }
+            (KeyModifiers::SHIFT, KeyCode::Down) => {
+                self.table.advance();
+            }
+            _ => self.stderr_pane.handle_key(key),
         }
     }
 
@@ -516,48 +565,74 @@ impl Dashboard {
         }
     }
 
+    fn focusable_panels(&self) -> Vec<FocusPanel> {
+        let mut panels = vec![FocusPanel::Table];
+        if self.visible_panes.script {
+            panels.push(FocusPanel::Script);
+        }
+        if self.visible_panes.stdout {
+            panels.push(FocusPanel::Stdout);
+        }
+        if self.visible_panes.stderr {
+            panels.push(FocusPanel::Stderr);
+        }
+        if self.visible_panes.filters {
+            panels.push(FocusPanel::Sidebar);
+        }
+        panels
+    }
+
     fn cycle_focus(&mut self) {
-        self.focus = match self.focus {
-            FocusPanel::Table => FocusPanel::Script,
-            FocusPanel::Script => FocusPanel::Output,
-            FocusPanel::Output => {
-                if self.filter_tree.open {
-                    FocusPanel::Sidebar
-                } else {
-                    FocusPanel::Table
-                }
-            }
-            FocusPanel::Sidebar => FocusPanel::Table,
-        };
+        let panels = self.focusable_panels();
+        if panels.len() <= 1 {
+            return;
+        }
+        let current = panels.iter().position(|&p| p == self.focus).unwrap_or(0);
+        let next = (current + 1) % panels.len();
+        self.focus = panels[next];
     }
 
     fn cycle_focus_reverse(&mut self) {
-        self.focus = match self.focus {
-            FocusPanel::Table => {
-                if self.filter_tree.open {
-                    FocusPanel::Sidebar
-                } else {
-                    FocusPanel::Output
-                }
-            }
-            FocusPanel::Script => FocusPanel::Table,
-            FocusPanel::Output => FocusPanel::Script,
-            FocusPanel::Sidebar => FocusPanel::Output,
+        let panels = self.focusable_panels();
+        if panels.len() <= 1 {
+            return;
+        }
+        let current = panels.iter().position(|&p| p == self.focus).unwrap_or(0);
+        let next = if current == 0 {
+            panels.len() - 1
+        } else {
+            current - 1
         };
+        self.focus = panels[next];
+    }
+
+    fn is_panel_visible(&self, panel: FocusPanel) -> bool {
+        match panel {
+            FocusPanel::Table => true,
+            FocusPanel::Script => self.visible_panes.script,
+            FocusPanel::Stdout => self.visible_panes.stdout,
+            FocusPanel::Stderr => self.visible_panes.stderr,
+            FocusPanel::Sidebar => self.visible_panes.filters,
+        }
     }
 
     fn on_mouse(&mut self, _ev: MouseEvent) {}
 
     fn on_timer(&mut self) {
         if !self.field_sel.visible
+            && !self.pane_sel.visible
             && self.refreshed_at.elapsed().as_secs() >= self.refresh_secs
             && let Err(e) = self.reload_jobs()
         {
             self.flash(format!("Auto-refresh failed: {}", e), 3);
         }
 
-        // Always poll output updates (panel is always visible)
-        self.output.poll_updates();
+        if self.visible_panes.stdout {
+            self.stdout_pane.poll_updates();
+        }
+        if self.visible_panes.stderr {
+            self.stderr_pane.poll_updates();
+        }
     }
 
     // ── Helpers ──────────────────────────────────────────────

@@ -60,7 +60,7 @@ pub struct FilterTree {
     // Text input state
     user_input: String,
     name_input: String,
-    editing: bool,
+    pub editing: bool,
     user_ok: Option<bool>,
     name_ok: Option<bool>,
 }
@@ -78,14 +78,6 @@ impl FilterTree {
             user_ok: None,
             name_ok: None,
         }
-    }
-
-    pub fn toggle(&mut self) -> bool {
-        self.open = !self.open;
-        if !self.open {
-            self.editing = false;
-        }
-        self.open
     }
 
     /// Sync text inputs from params (call when opening sidebar).
