@@ -287,7 +287,7 @@ impl Dashboard {
             .filter(|j| j.state == JobState::Running)
             .count();
         let other = self.table.jobs.len() - pending - running;
-        render_statusbar(frame, area, (pending, running, other));
+        render_statusbar(frame, area, (pending, running, other), self.focus);
     }
 
     fn draw_titlebar(&self, frame: &mut Frame, area: Rect) {

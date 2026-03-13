@@ -6,6 +6,7 @@ use ratatui::{
     widgets::{Block, Paragraph},
 };
 
+use crate::dashboard::FocusPanel;
 use crate::views::filter_tree::SIDEBAR_WIDTH;
 
 const BAR_BG: Color = Color::Rgb(30, 30, 50);
@@ -128,7 +129,7 @@ pub fn render_titlebar(
     }
 }
 
-pub fn render_statusbar(frame: &mut Frame, area: Rect, counts: (usize, usize, usize)) {
+pub fn render_statusbar(frame: &mut Frame, area: Rect, counts: (usize, usize, usize), focus: FocusPanel) {
     let bar_style = Style::default().bg(BAR_BG);
 
     // Fill background
@@ -138,18 +139,38 @@ pub fn render_statusbar(frame: &mut Frame, area: Rect, counts: (usize, usize, us
     let mid_y = area.y + area.height / 2;
     let row = Rect { x: area.x, y: mid_y, width: area.width, height: 1 };
 
-    let bindings = [
+    // Global bindings (always shown)
+    let mut bindings: Vec<(&str, &str)> = vec![
         ("Esc", "Quit"),
         ("\u{2191}\u{2193}", "Nav"),
         ("Tab", "Focus"),
         ("f", "Sidebar"),
-        ("c", "Columns"),
     ];
 
+    // Context-specific bindings per focused pane
+    match focus {
+        FocusPanel::Table => {
+            bindings.push(("c", "Columns"));
+            bindings.push(("Space", "Mark"));
+            bindings.push(("a", "Mark All"));
+            bindings.push(("x", "Cancel"));
+        }
+        FocusPanel::Sidebar => {
+            bindings.push(("Enter", "Edit/Toggle"));
+            bindings.push(("r", "Reset"));
+            bindings.push(("Ctrl+S", "Save"));
+        }
+        FocusPanel::Output => {
+            bindings.push(("o", "Toggle Stream"));
+            bindings.push(("PgUp/Dn", "Scroll"));
+        }
+        FocusPanel::Script => {}
+    }
+
     let mut spans: Vec<Span> = vec![Span::styled("  ", bar_style)];
-    for (k, desc) in bindings {
+    for (k, desc) in &bindings {
         spans.push(Span::styled(
-            k,
+            *k,
             Style::default().fg(ACCENT).bg(BAR_BG),
         ));
         spans.push(Span::styled(
