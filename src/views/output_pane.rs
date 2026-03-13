@@ -6,7 +6,7 @@ use ratatui::{
     layout::Rect,
     style::{Color, Modifier, Style},
     text::{Line, Span, Text},
-    widgets::{Block, BorderType, Borders, Clear, Paragraph, Wrap},
+    widgets::{Block, BorderType, Borders, Paragraph, Wrap},
 };
 use std::{collections::HashMap, iter::once, path::PathBuf, process::Command, time::Duration};
 
@@ -42,7 +42,6 @@ enum FileState {
 }
 
 pub struct OutputPane {
-    pub visible: bool,
     pub job_id: Option<String>,
     pub stream: StreamKind,
     pub content: String,
@@ -58,7 +57,6 @@ pub struct OutputPane {
 impl OutputPane {
     pub fn new() -> Self {
         Self {
-            visible: false,
             job_id: None,
             stream: StreamKind::Stdout,
             content: String::new(),
@@ -69,18 +67,6 @@ impl OutputPane {
             data_rx: None,
             poll_rate: Duration::from_secs(1),
             fstate: FileState::Missing,
-        }
-    }
-
-    pub fn show(&mut self, job_id: String) {
-        self.switch_job(job_id);
-        self.visible = true;
-    }
-
-    pub fn hide(&mut self) {
-        self.visible = false;
-        if let Some(m) = &mut self.monitor {
-            m.set_file_path(None);
         }
     }
 
@@ -164,19 +150,48 @@ impl OutputPane {
         self.scroll_pos = (self.scroll_pos + 10).min(n.saturating_sub(1));
     }
 
-    pub fn render(&self, frame: &mut Frame, area: Rect) {
-        if !self.visible {
+    pub fn ensure_job(&mut self, job_id: &str) {
+        if self.job_id.as_deref() == Some(job_id) {
             return;
         }
+        self.switch_job(job_id.to_string());
+    }
 
-        frame.render_widget(Clear, area);
+    pub fn clear_job(&mut self) {
+        self.job_id = None;
+        self.content.clear();
+        self.scroll_pos = 0;
+        self.fstate = FileState::Missing;
+        if let Some(m) = &mut self.monitor {
+            m.set_file_path(None);
+        }
+    }
 
-        let heading = match &self.job_id {
-            Some(id) => format!("Job {} - {}", id, self.stream.label()),
-            None => format!("Log View - {}", self.stream.label()),
+    pub fn render_inline(&self, frame: &mut Frame, area: Rect, focused: bool) {
+        let border_color = if focused {
+            Color::Magenta
+        } else {
+            Color::Rgb(50, 50, 70)
         };
 
-        let keys = " [\u{2191}/\u{2193}] Scroll | [Shift+\u{2191}/\u{2193}] Toggle Job | [o] Toggle stdout/stderr | [Esc] Close ";
+        let title = match &self.job_id {
+            Some(id) => format!(" {} [{}] ", self.stream.label(), id),
+            None => format!(" {} ", self.stream.label()),
+        };
+
+        let block = Block::default()
+            .title(title)
+            .borders(Borders::ALL)
+            .border_type(BorderType::Rounded)
+            .border_style(Style::default().fg(border_color));
+
+        if self.job_id.is_none() {
+            let placeholder = Paragraph::new("Select a job to view output logs")
+                .style(Style::default().fg(Color::DarkGray))
+                .block(block);
+            frame.render_widget(placeholder, area);
+            return;
+        }
 
         let display_text = match (self.fstate, self.content.is_empty()) {
             (FileState::Missing, _) => format!(
@@ -197,14 +212,7 @@ impl OutputPane {
 
         let widget = Paragraph::new(fitted)
             .style(Style::default().fg(Color::Rgb(200, 200, 210)))
-            .block(
-                Block::default()
-                    .title(format!("{}{}", heading, keys))
-                    .borders(Borders::ALL)
-                    .border_type(BorderType::Rounded)
-                    .border_style(Style::default().fg(Color::Magenta))
-                    .style(Style::default().bg(Color::Rgb(15, 15, 30))),
-            )
+            .block(block)
             .wrap(Wrap { trim: false })
             .scroll((self.scroll_pos as u16, 0));
 

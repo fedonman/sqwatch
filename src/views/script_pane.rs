@@ -4,12 +4,11 @@ use ratatui::{
     layout::Rect,
     style::{Color, Modifier, Style},
     text::{Line, Span, Text},
-    widgets::{Block, BorderType, Borders, Clear, Paragraph, Wrap},
+    widgets::{Block, BorderType, Borders, Paragraph, Wrap},
 };
 use std::{collections::HashMap, process::Command};
 
 pub struct ScriptPane {
-    pub visible: bool,
     pub job_id: Option<String>,
     pub job_name: Option<String>,
     pub body: String,
@@ -21,7 +20,6 @@ pub struct ScriptPane {
 impl ScriptPane {
     pub fn new() -> Self {
         Self {
-            visible: false,
             job_id: None,
             job_name: None,
             body: String::new(),
@@ -29,11 +27,6 @@ impl ScriptPane {
             path: None,
             has_bat: detect_bat(),
         }
-    }
-
-    pub fn show(&mut self, id: String, label: String) {
-        self.switch_job(id, label);
-        self.visible = true;
     }
 
     pub fn switch_job(&mut self, id: String, label: String) {
@@ -55,30 +48,49 @@ impl ScriptPane {
         }
     }
 
-    pub fn render(&self, frame: &mut Frame, area: Rect) {
-        if !self.visible {
+    pub fn ensure_job(&mut self, job_id: &str, job_name: &str) {
+        if self.job_id.as_deref() == Some(job_id) {
+            return;
+        }
+        self.switch_job(job_id.to_string(), job_name.to_string());
+    }
+
+    pub fn clear_job(&mut self) {
+        self.job_id = None;
+        self.job_name = None;
+        self.body.clear();
+        self.scroll_pos = 0;
+    }
+
+    pub fn render_inline(&self, frame: &mut Frame, area: Rect, focused: bool) {
+        let border_color = if focused {
+            Color::Magenta
+        } else {
+            Color::Rgb(50, 50, 70)
+        };
+
+        let title = match (&self.job_id, &self.job_name) {
+            (Some(id), Some(name)) => format!(" Script: {}/{} ", name, id),
+            _ => " Script ".to_string(),
+        };
+
+        let block = Block::default()
+            .title(title)
+            .borders(Borders::ALL)
+            .border_type(BorderType::Rounded)
+            .border_style(Style::default().fg(border_color));
+
+        if self.job_id.is_none() {
+            let placeholder = Paragraph::new("Select a job to view its script")
+                .style(Style::default().fg(Color::DarkGray))
+                .block(block);
+            frame.render_widget(placeholder, area);
             return;
         }
 
-        frame.render_widget(Clear, area);
-
-        let id_str = self.job_id.as_deref().unwrap_or("null");
-        let label_str = self.job_name.as_deref().unwrap_or("null");
-
-        let title = format!("Job Script for {}/{}", label_str, id_str);
-        let keys =
-            " [\u{2191}/\u{2193}] Scroll | [Shift+\u{2191}/\u{2193}] Toggle Job | [Esc] Close ";
-
         let display = self.build_display_text();
         let widget = Paragraph::new(display)
-            .block(
-                Block::default()
-                    .title(format!("{}{}", title, keys))
-                    .borders(Borders::ALL)
-                    .border_type(BorderType::Rounded)
-                    .border_style(Style::default().fg(Color::Magenta))
-                    .style(Style::default().bg(Color::Rgb(15, 15, 30))),
-            )
+            .block(block)
             .wrap(Wrap { trim: false })
             .scroll((self.scroll_pos as u16, 0));
 

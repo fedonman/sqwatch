@@ -23,12 +23,21 @@ use crate::{
     views::{
         chrome::{build_frame, popup_rect, render_statusbar, render_titlebar},
         fields::{FieldAction, FieldSelector, JobField, OrderedField, Ordering},
+        filter_tree::{FilterTree, FilterTreeAction},
         job_table::JobTable,
         output_pane::OutputPane,
         script_pane::ScriptPane,
         search::{SearchAction, SearchDialog},
     },
 };
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum FocusPanel {
+    Table,
+    Script,
+    Output,
+    Sidebar,
+}
 
 pub struct Dashboard {
     pub alive: bool,
@@ -41,6 +50,8 @@ pub struct Dashboard {
     pub field_sel: FieldSelector,
     pub output: OutputPane,
     pub script: ScriptPane,
+    pub filter_tree: FilterTree,
+    pub focus: FocusPanel,
     pub notice: String,
     pub notice_expires: Option<Instant>,
     pub refresh_secs: u64,
@@ -94,6 +105,8 @@ impl Dashboard {
             field_sel: FieldSelector::new(visible_fields.clone(), sort_fields.clone()),
             output: OutputPane::new(),
             script: ScriptPane::new(),
+            filter_tree: FilterTree::new(),
+            focus: FocusPanel::Table,
             notice: String::new(),
             notice_expires: None,
             refresh_secs: 1,
@@ -204,31 +217,50 @@ impl Dashboard {
         Ok(())
     }
 
+    // ── Drawing ──────────────────────────────────────────────
+
     pub fn draw(&mut self, frame: &mut Frame) {
-        let regions = build_frame(frame);
+        let layout = build_frame(frame, self.filter_tree.open);
 
-        self.draw_titlebar(frame, regions[0]);
-        self.draw_job_table(frame, regions[1]);
-        self.draw_statusbar(frame, regions[2]);
+        self.draw_titlebar(frame, layout.titlebar);
+        self.draw_statusbar(frame, layout.statusbar);
 
+        // Sync right-side panels to focused job
+        self.sync_panels_to_focused_job();
+
+        // Filter sidebar
+        if let Some(sidebar_area) = layout.sidebar {
+            self.filter_tree.render(
+                frame,
+                sidebar_area,
+                self.focus == FocusPanel::Sidebar,
+                &self.params,
+                &self.known_states,
+                &self.known_partitions,
+                &self.known_qos,
+                &self.known_nodes,
+            );
+        }
+
+        // Job table
+        self.table
+            .render(frame, layout.table, &self.visible_fields, &self.sort_fields);
+
+        // Right-side panels (always visible)
+        self.script
+            .render_inline(frame, layout.script, self.focus == FocusPanel::Script);
+        self.output
+            .render_inline(frame, layout.output, self.focus == FocusPanel::Output);
+
+        // Popups (overlays that still exist)
         if self.search_dlg.visible {
             let r = popup_rect(frame.area(), 75, 75);
             self.draw_search(frame, r);
         }
 
-        if self.script.visible {
-            let r = popup_rect(frame.area(), 75, 55);
-            self.script.render(frame, r);
-        }
-
         if self.field_sel.visible {
             let r = popup_rect(frame.area(), 75, 75);
             self.field_sel.render(frame, r);
-        }
-
-        if self.output.visible {
-            let r = popup_rect(frame.area(), 75, 75);
-            self.output.render(frame, r);
         }
 
         if self.confirming_cancel {
@@ -237,9 +269,16 @@ impl Dashboard {
         }
     }
 
-    fn draw_job_table(&mut self, frame: &mut Frame, area: Rect) {
-        self.table
-            .render(frame, area, &self.visible_fields, &self.sort_fields);
+    fn sync_panels_to_focused_job(&mut self) {
+        if let Some(job) = self.table.focused_job() {
+            let id = job.job_id.clone();
+            let name = job.name.clone();
+            self.script.ensure_job(&id, &name);
+            self.output.ensure_job(&id);
+        } else {
+            self.script.clear_job();
+            self.output.clear_job();
+        }
     }
 
     fn draw_search(&mut self, frame: &mut Frame, area: Rect) {
@@ -315,6 +354,8 @@ impl Dashboard {
         frame.render_widget(widget, area);
     }
 
+    // ── Input handling ───────────────────────────────────────
+
     fn process_input(&mut self) -> Result<()> {
         match self.input.rx.recv()? {
             Signal::Keyboard(k) if k.kind == KeyEventKind::Press => self.on_keypress(k),
@@ -327,87 +368,182 @@ impl Dashboard {
     }
 
     fn on_keypress(&mut self, key: KeyEvent) {
+        // ── Popup-level dispatch (highest priority) ──
+        if self.confirming_cancel {
+            match key.code {
+                KeyCode::Char('y') => {
+                    self.do_cancel();
+                    self.confirming_cancel = false;
+                }
+                KeyCode::Char('n') | KeyCode::Esc => self.confirming_cancel = false,
+                _ => {}
+            }
+            return;
+        }
+
+        if self.field_sel.visible {
+            let action = self.field_sel.handle_key(key);
+            match action {
+                FieldAction::Dismiss => self.field_sel.visible = false,
+                FieldAction::Confirm => {
+                    self.visible_fields = self.field_sel.active.clone();
+                    self.sort_fields = self.field_sel.sort_list.clone();
+                    if let Err(e) = self.reload_jobs() {
+                        self.flash(format!("Failed to refresh: {}", e), 3);
+                    }
+                }
+                FieldAction::Save => {
+                    self.visible_fields = self.field_sel.active.clone();
+                    self.sort_fields = self.field_sel.sort_list.clone();
+                    match save_columns(&self.visible_fields, &self.sort_fields) {
+                        Ok(_) => self.flash("Column settings saved".into(), 3),
+                        Err(e) => self.flash(format!("Failed to save columns: {}", e), 3),
+                    }
+                }
+                FieldAction::Noop => {}
+            }
+            return;
+        }
+
+        if self.search_dlg.visible {
+            let action = self.search_dlg.handle_key(
+                key,
+                &mut self.params,
+                &self.known_states,
+                &self.known_partitions,
+                &self.known_qos,
+                &self.known_nodes,
+            );
+            match action {
+                SearchAction::Dismiss => self.search_dlg.visible = false,
+                SearchAction::Confirm => {
+                    if let Err(e) = self.apply_search() {
+                        self.flash(format!("Failed to apply filters: {}", e), 3);
+                    }
+                }
+                SearchAction::Save => match save_filters(&self.params) {
+                    Ok(_) => self.flash("Filter settings saved".into(), 3),
+                    Err(e) => self.flash(format!("Failed to save filters: {}", e), 3),
+                },
+                SearchAction::Noop => {}
+            }
+            return;
+        }
+
+        // ── Global keys ──
         match (key.modifiers, key.code) {
             (_, KeyCode::Esc) | (KeyModifiers::CONTROL, KeyCode::Char('c')) => {
-                if self.any_overlay_open() {
-                    self.close_all_overlays();
+                if self.focus != FocusPanel::Table {
+                    self.focus = FocusPanel::Table;
                 } else {
                     self.alive = false;
                 }
+                return;
             }
-
-            (_, KeyCode::Char('f')) if !self.script.visible && !self.search_dlg.visible => {
+            (_, KeyCode::Tab) => {
+                self.cycle_focus();
+                return;
+            }
+            (KeyModifiers::SHIFT, KeyCode::BackTab) => {
+                self.cycle_focus_reverse();
+                return;
+            }
+            (_, KeyCode::Char('f')) => {
+                let opened = self.filter_tree.toggle();
+                if opened {
+                    self.focus = FocusPanel::Sidebar;
+                } else if self.focus == FocusPanel::Sidebar {
+                    self.focus = FocusPanel::Table;
+                }
+                return;
+            }
+            (KeyModifiers::SHIFT, KeyCode::Char('F')) => {
+                // Open full filter popup for regex editing
                 self.search_dlg.visible = true;
                 self.search_dlg.load_from(&self.params);
+                return;
             }
+            (_, KeyCode::Char('c')) if self.focus == FocusPanel::Table => {
+                self.field_sel =
+                    FieldSelector::new(self.visible_fields.clone(), self.sort_fields.clone());
+                self.field_sel.visible = true;
+                return;
+            }
+            _ => {}
+        }
 
-            (_, KeyCode::Up)
-                if !self.search_dlg.visible
-                    && !self.script.visible
-                    && !self.field_sel.visible
-                    && !self.output.visible =>
-            {
+        // ── Focus-specific dispatch ──
+        match self.focus {
+            FocusPanel::Table => self.on_table_key(key),
+            FocusPanel::Script => self.on_script_key(key),
+            FocusPanel::Output => self.on_output_key(key),
+            FocusPanel::Sidebar => self.on_sidebar_key(key),
+        }
+    }
+
+    fn on_table_key(&mut self, key: KeyEvent) {
+        match (key.modifiers, key.code) {
+            (_, KeyCode::Up) => {
                 self.table.retreat();
             }
-            (_, KeyCode::Down)
-                if !self.search_dlg.visible
-                    && !self.script.visible
-                    && !self.field_sel.visible
-                    && !self.output.visible =>
-            {
+            (_, KeyCode::Down) => {
                 self.table.advance();
             }
-
-            (_, KeyCode::Char(' '))
-                if !self.search_dlg.visible && !self.script.visible && !self.field_sel.visible =>
-            {
-                self.table.flip_selection();
-            }
-            (_, KeyCode::Char('a'))
-                if !self.search_dlg.visible && !self.script.visible && !self.field_sel.visible =>
-            {
+            (_, KeyCode::Char(' ')) => self.table.flip_selection(),
+            (_, KeyCode::Char('a')) => {
                 if self.table.everything_marked() {
                     self.table.unmark_all();
                 } else {
                     self.table.mark_all();
                 }
             }
-            (_, KeyCode::Char('x'))
-                if !self.search_dlg.visible && !self.script.visible && !self.field_sel.visible =>
-            {
+            (_, KeyCode::Char('x')) => {
                 self.confirming_cancel = true;
             }
-            (_, KeyCode::Char('y'))
-                if self.confirming_cancel
-                    && !self.search_dlg.visible
-                    && !self.script.visible
-                    && !self.field_sel.visible =>
-            {
-                self.do_cancel();
-                self.confirming_cancel = false;
+            (_, KeyCode::Char('s')) => {
+                self.focus = FocusPanel::Script;
             }
-            (_, KeyCode::Char('n'))
-                if self.confirming_cancel
-                    && !self.search_dlg.visible
-                    && !self.script.visible
-                    && !self.field_sel.visible =>
-            {
-                self.confirming_cancel = false;
+            (_, KeyCode::Char('v')) => {
+                self.focus = FocusPanel::Output;
             }
+            _ => {}
+        }
+    }
 
-            (_, KeyCode::Char('c'))
-                if !self.search_dlg.visible
-                    && !self.script.visible
-                    && !self.field_sel.visible
-                    && !self.confirming_cancel =>
-            {
-                self.field_sel =
-                    FieldSelector::new(self.visible_fields.clone(), self.sort_fields.clone());
-                self.field_sel.visible = true;
+    fn on_script_key(&mut self, key: KeyEvent) {
+        match (key.modifiers, key.code) {
+            (KeyModifiers::SHIFT, KeyCode::Up) => {
+                self.table.retreat();
             }
+            (KeyModifiers::SHIFT, KeyCode::Down) => {
+                self.table.advance();
+            }
+            _ => self.script.handle_key(key),
+        }
+    }
 
-            _ if self.search_dlg.visible => {
-                let action = self.search_dlg.handle_key(
+    fn on_output_key(&mut self, key: KeyEvent) {
+        match (key.modifiers, key.code) {
+            (KeyModifiers::SHIFT, KeyCode::Up) => {
+                self.table.retreat();
+            }
+            (KeyModifiers::SHIFT, KeyCode::Down) => {
+                self.table.advance();
+            }
+            _ => self.output.handle_key(key),
+        }
+    }
+
+    fn on_sidebar_key(&mut self, key: KeyEvent) {
+        match key.code {
+            KeyCode::Char('s') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+                match save_filters(&self.params) {
+                    Ok(_) => self.flash("Filter settings saved".into(), 3),
+                    Err(e) => self.flash(format!("Failed to save filters: {}", e), 3),
+                }
+            }
+            _ => {
+                let action = self.filter_tree.handle_key(
                     key,
                     &mut self.params,
                     &self.known_states,
@@ -415,126 +551,61 @@ impl Dashboard {
                     &self.known_qos,
                     &self.known_nodes,
                 );
-                match action {
-                    SearchAction::Dismiss => self.search_dlg.visible = false,
-                    SearchAction::Confirm => {
-                        if let Err(e) = self.apply_search() {
-                            self.flash(format!("Failed to apply filters: {}", e), 3);
-                        }
-                    }
-                    SearchAction::Save => match save_filters(&self.params) {
-                        Ok(_) => self.flash("Filter settings saved".into(), 3),
-                        Err(e) => self.flash(format!("Failed to save filters: {}", e), 3),
-                    },
-                    SearchAction::Noop => {}
-                }
-            }
-
-            (_, KeyCode::Char('s'))
-                if !self.search_dlg.visible
-                    && !self.script.visible
-                    && !self.field_sel.visible
-                    && !self.output.visible =>
-            {
-                if let Some(j) = self.table.focused_job() {
-                    self.script.show(j.job_id.clone(), j.name.clone());
-                }
-            }
-
-            (KeyModifiers::SHIFT, KeyCode::Up) if self.script.visible => {
-                if self.table.retreat()
-                    && let Some(j) = self.table.focused_job()
+                if action == FilterTreeAction::Applied
+                    && let Err(e) = self.apply_search()
                 {
-                    self.script.switch_job(j.job_id.clone(), j.name.clone());
+                    self.flash(format!("Failed to apply filters: {}", e), 3);
                 }
             }
-            (KeyModifiers::SHIFT, KeyCode::Down) if self.script.visible => {
-                if self.table.advance()
-                    && let Some(j) = self.table.focused_job()
-                {
-                    self.script.switch_job(j.job_id.clone(), j.name.clone());
-                }
-            }
-            _ if self.script.visible => {
-                self.script.handle_key(key);
-            }
-
-            (_, KeyCode::Enter) if self.script.visible => {
-                self.script.visible = false;
-            }
-
-            (_, KeyCode::Char('v'))
-                if !self.search_dlg.visible
-                    && !self.script.visible
-                    && !self.field_sel.visible
-                    && !self.output.visible =>
-            {
-                if let Some(j) = self.table.focused_job() {
-                    self.output.show(j.job_id.clone());
-                }
-            }
-
-            (KeyModifiers::SHIFT, KeyCode::Up) if self.output.visible => {
-                if self.table.retreat()
-                    && let Some(j) = self.table.focused_job()
-                {
-                    self.output.switch_job(j.job_id.clone());
-                }
-            }
-            (KeyModifiers::SHIFT, KeyCode::Down) if self.output.visible => {
-                if self.table.advance()
-                    && let Some(j) = self.table.focused_job()
-                {
-                    self.output.switch_job(j.job_id.clone());
-                }
-            }
-            _ if self.output.visible => {
-                self.output.handle_key(key);
-            }
-
-            _ if self.field_sel.visible => {
-                let action = self.field_sel.handle_key(key);
-                match action {
-                    FieldAction::Dismiss => self.field_sel.visible = false,
-                    FieldAction::Confirm => {
-                        self.visible_fields = self.field_sel.active.clone();
-                        self.sort_fields = self.field_sel.sort_list.clone();
-                        if let Err(e) = self.reload_jobs() {
-                            self.flash(format!("Failed to refresh: {}", e), 3);
-                        }
-                    }
-                    FieldAction::Save => {
-                        self.visible_fields = self.field_sel.active.clone();
-                        self.sort_fields = self.field_sel.sort_list.clone();
-                        match save_columns(&self.visible_fields, &self.sort_fields) {
-                            Ok(_) => self.flash("Column settings saved".into(), 3),
-                            Err(e) => self.flash(format!("Failed to save columns: {}", e), 3),
-                        }
-                    }
-                    FieldAction::Noop => {}
-                }
-            }
-
-            _ => {}
         }
+    }
+
+    fn cycle_focus(&mut self) {
+        self.focus = match self.focus {
+            FocusPanel::Table => FocusPanel::Script,
+            FocusPanel::Script => FocusPanel::Output,
+            FocusPanel::Output => {
+                if self.filter_tree.open {
+                    FocusPanel::Sidebar
+                } else {
+                    FocusPanel::Table
+                }
+            }
+            FocusPanel::Sidebar => FocusPanel::Table,
+        };
+    }
+
+    fn cycle_focus_reverse(&mut self) {
+        self.focus = match self.focus {
+            FocusPanel::Table => {
+                if self.filter_tree.open {
+                    FocusPanel::Sidebar
+                } else {
+                    FocusPanel::Output
+                }
+            }
+            FocusPanel::Script => FocusPanel::Table,
+            FocusPanel::Output => FocusPanel::Script,
+            FocusPanel::Sidebar => FocusPanel::Output,
+        };
     }
 
     fn on_mouse(&mut self, _ev: MouseEvent) {}
 
     fn on_timer(&mut self) {
-        if !self.search_dlg.visible
-            && !self.script.visible
-            && !self.field_sel.visible
+        if !self.field_sel.visible
+            && !self.search_dlg.visible
             && self.refreshed_at.elapsed().as_secs() >= self.refresh_secs
             && let Err(e) = self.reload_jobs()
         {
             self.flash(format!("Auto-refresh failed: {}", e), 3);
         }
 
-        if self.output.visible {
-            self.output.poll_updates();
-        }
+        // Always poll output updates (panel is always visible)
+        self.output.poll_updates();
     }
+
+    // ── Helpers ──────────────────────────────────────────────
 
     fn flash(&mut self, msg: String, secs: u64) {
         self.notice = msg;
@@ -601,22 +672,6 @@ impl Dashboard {
         } else {
             parts.join(", ")
         }
-    }
-
-    fn any_overlay_open(&self) -> bool {
-        self.search_dlg.visible
-            || self.script.visible
-            || self.field_sel.visible
-            || self.output.visible
-            || self.confirming_cancel
-    }
-
-    fn close_all_overlays(&mut self) {
-        self.search_dlg.visible = false;
-        self.script.visible = false;
-        self.field_sel.visible = false;
-        self.output.hide();
-        self.confirming_cancel = false;
     }
 
     fn rebuild_format(&mut self) {

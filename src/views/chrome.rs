@@ -6,12 +6,23 @@ use ratatui::{
     widgets::{Block, Borders, Paragraph},
 };
 
+use crate::views::filter_tree::SIDEBAR_WIDTH;
+
 const BAR_BG: Color = Color::Rgb(30, 30, 50);
 const ACCENT: Color = Color::Magenta;
 const FLASH_COLOR: Color = Color::Rgb(255, 200, 80);
 
-pub fn build_frame(frame: &mut Frame) -> Vec<Rect> {
-    let regions = Layout::default()
+pub struct FrameLayout {
+    pub titlebar: Rect,
+    pub sidebar: Option<Rect>,
+    pub table: Rect,
+    pub script: Rect,
+    pub output: Rect,
+    pub statusbar: Rect,
+}
+
+pub fn build_frame(frame: &mut Frame, sidebar_open: bool) -> FrameLayout {
+    let rows = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
             Constraint::Length(1),
@@ -20,7 +31,43 @@ pub fn build_frame(frame: &mut Frame) -> Vec<Rect> {
         ])
         .split(frame.area());
 
-    vec![regions[0], regions[1], regions[2]]
+    let titlebar = rows[0];
+    let statusbar = rows[2];
+    let content = rows[1];
+
+    // Split content into columns: [sidebar?] | table | right-panels
+    let (sidebar, table_area, right_area) = if sidebar_open {
+        let cols = Layout::default()
+            .direction(Direction::Horizontal)
+            .constraints([
+                Constraint::Length(SIDEBAR_WIDTH),
+                Constraint::Percentage(50),
+                Constraint::Min(25),
+            ])
+            .split(content);
+        (Some(cols[0]), cols[1], cols[2])
+    } else {
+        let cols = Layout::default()
+            .direction(Direction::Horizontal)
+            .constraints([Constraint::Percentage(60), Constraint::Min(25)])
+            .split(content);
+        (None, cols[0], cols[1])
+    };
+
+    // Split right area into script (top) and output (bottom)
+    let right_split = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([Constraint::Percentage(45), Constraint::Percentage(55)])
+        .split(right_area);
+
+    FrameLayout {
+        titlebar,
+        sidebar,
+        table: table_area,
+        script: right_split[0],
+        output: right_split[1],
+        statusbar,
+    }
 }
 
 pub fn render_titlebar(
@@ -80,10 +127,9 @@ pub fn render_statusbar(frame: &mut Frame, area: Rect, counts: (usize, usize, us
     let bindings = [
         ("Esc", "Quit"),
         ("\u{2191}\u{2193}", "Nav"),
-        ("f", "Filter"),
+        ("Tab", "Focus"),
+        ("f", "Sidebar"),
         ("c", "Columns"),
-        ("v", "Logs"),
-        ("s", "Script"),
     ];
 
     let mut spans: Vec<Span> = vec![Span::styled(" ", bar_style)];
@@ -105,11 +151,7 @@ pub fn render_statusbar(frame: &mut Frame, area: Rect, counts: (usize, usize, us
     frame.render_widget(widget, area);
 
     // Right-aligned stats
-    let stat_text = format!(
-        " P:{} R:{} O:{} ",
-        counts.0, counts.1, counts.2
-    );
-    let stat_width = stat_text.len() as u16;
+    let stat_width = format!("P:{} R:{} O:{} ", counts.0, counts.1, counts.2).len() as u16;
     if area.width > stat_width + 2 {
         let stat_area = Rect {
             x: area.x + area.width - stat_width,
@@ -118,19 +160,16 @@ pub fn render_statusbar(frame: &mut Frame, area: Rect, counts: (usize, usize, us
             height: 1,
         };
         let stat_spans = vec![
-            Span::styled("P:", Style::default().fg(Color::Rgb(255, 170, 50)).bg(BAR_BG)),
             Span::styled(
-                format!("{} ", counts.0),
+                format!("P:{} ", counts.0),
                 Style::default().fg(Color::Rgb(255, 170, 50)).bg(BAR_BG),
             ),
-            Span::styled("R:", Style::default().fg(Color::Rgb(50, 210, 170)).bg(BAR_BG)),
             Span::styled(
-                format!("{} ", counts.1),
+                format!("R:{} ", counts.1),
                 Style::default().fg(Color::Rgb(50, 210, 170)).bg(BAR_BG),
             ),
-            Span::styled("O:", Style::default().fg(Color::Rgb(120, 140, 180)).bg(BAR_BG)),
             Span::styled(
-                format!("{} ", counts.2),
+                format!("O:{} ", counts.2),
                 Style::default().fg(Color::Rgb(120, 140, 180)).bg(BAR_BG),
             ),
         ];
