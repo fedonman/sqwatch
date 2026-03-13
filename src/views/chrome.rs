@@ -169,18 +169,18 @@ pub fn render_statusbar(frame: &mut Frame, area: Rect, counts: (usize, usize, us
     // Global bindings (always shown)
     let mut bindings: Vec<(&str, &str)> = vec![
         ("Esc", "Quit"),
-        ("\u{2191}\u{2193}", "Nav"),
         ("Tab", "Focus"),
-        ("w", "Layout"),
+        ("\u{2191}\u{2193}", "Navigation"),
+        ("w", "Widgets"),
     ];
 
     // Context-specific bindings per focused widget
     match focus {
         FocusWidget::Table => {
             bindings.push(("c", "Columns"));
-            bindings.push(("Space", "Mark"));
-            bindings.push(("a", "Mark All"));
-            bindings.push(("x", "Cancel"));
+            // bindings.push(("Space", "Mark"));
+            // bindings.push(("a", "Mark All"));
+            // bindings.push(("x", "Cancel"));
         }
         FocusWidget::Sidebar => {
             bindings.push(("Enter", "Edit/Toggle"));
