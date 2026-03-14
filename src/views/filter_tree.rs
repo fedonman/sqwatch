@@ -505,7 +505,7 @@ impl FilterTree {
         let inner_w = area.width.saturating_sub(2) as usize;
         let display = truncate(value, inner_w);
 
-        let widget = Paragraph::new(display.to_string())
+        let widget = Paragraph::new(display)
             .style(Style::default().fg(text_color))
             .block(blk);
         frame.render_widget(widget, area);
@@ -577,12 +577,14 @@ impl FilterTree {
     }
 }
 
-fn truncate(s: &str, max: usize) -> &str {
-    if s.len() <= max {
-        s
+fn truncate(s: &str, max: usize) -> String {
+    if s.chars().count() <= max {
+        s.to_string()
     } else if max > 3 {
-        &s[..max - 3]
+        let mut truncated: String = s.chars().take(max - 3).collect();
+        truncated.push_str("...");
+        truncated
     } else {
-        &s[..max]
+        s.chars().take(max).collect()
     }
 }

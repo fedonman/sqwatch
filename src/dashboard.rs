@@ -621,11 +621,6 @@ impl Dashboard {
         self.notice_expires = Some(Instant::now() + Duration::from_secs(secs));
     }
 
-    fn _set_refresh_rate(&mut self, secs: u64) {
-        self.refresh_secs = secs;
-        self.flash(format!("Auto-refresh interval set to {}s", secs), 3);
-    }
-
     fn apply_search(&mut self) -> Result<()> {
         self.flash("Applying filters...".into(), 3);
 
@@ -697,7 +692,7 @@ impl Dashboard {
             for sf in &self.sort_fields {
                 let code = sf.field.format_code().trim_start_matches('%');
                 let asc = matches!(sf.direction, Ordering::Asc);
-                self.params.ordering.insert(code.to_string(), asc);
+                self.params.ordering.push((code.to_string(), asc));
             }
 
             if let Some(first) = self.sort_fields.first() {
@@ -710,7 +705,7 @@ impl Dashboard {
                 self.table.sort_asc = matches!(first.direction, Ordering::Asc);
             }
         } else {
-            self.params.ordering.insert("i".to_string(), true);
+            self.params.ordering.push(("i".to_string(), true));
             self.table.primary_sort_col = 0;
             self.table.sort_asc = true;
         }

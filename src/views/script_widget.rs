@@ -6,9 +6,14 @@ use ratatui::{
     text::{Line, Span, Text},
     widgets::{Block, BorderType, Borders, Paragraph, Wrap},
 };
+use regex::Regex;
 use std::process::Command;
+use std::sync::LazyLock;
 
 use crate::backend::commands::scontrol_show_job;
+
+static ANSI_ESCAPE_RE: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"\x1B\[([0-9;]*)m").unwrap());
 
 pub struct ScriptWidget {
     pub job_id: Option<String>,
@@ -184,9 +189,6 @@ fn run_bat(path: &str) -> Option<String> {
 }
 
 fn ansi_to_spans(text: &str) -> Vec<Line<'_>> {
-    use regex::Regex;
-
-    let escape_re = Regex::new(r"\x1B\[([0-9;]*)m").unwrap();
     let mut output = Vec::new();
     let mut style = Style::default();
 
@@ -194,7 +196,7 @@ fn ansi_to_spans(text: &str) -> Vec<Line<'_>> {
         let mut spans = Vec::new();
         let mut cursor = 0;
 
-        for cap in escape_re.captures_iter(line) {
+        for cap in ANSI_ESCAPE_RE.captures_iter(line) {
             let whole = cap.get(0).unwrap();
             let codes = cap.get(1).unwrap();
 

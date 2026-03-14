@@ -82,7 +82,7 @@ impl JobTable {
     }
 
     pub fn everything_marked(&self) -> bool {
-        self.marked.len() == self.jobs.len()
+        !self.jobs.is_empty() && self.marked.len() == self.jobs.len()
     }
 
     pub fn mark_all(&mut self) {
@@ -199,8 +199,9 @@ impl JobTable {
                     let txt = match f {
                         JobField::Id => job.job_id.clone(),
                         JobField::Name => {
-                            if job.name.len() > 30 {
-                                format!("{}...", &job.name[0..27])
+                            if job.name.chars().count() > 30 {
+                                let truncated: String = job.name.chars().take(27).collect();
+                                format!("{}...", truncated)
                             } else {
                                 job.name.clone()
                             }

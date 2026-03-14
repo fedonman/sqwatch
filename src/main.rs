@@ -15,6 +15,7 @@ mod views;
 use dashboard::Dashboard;
 
 fn main() -> Result<()> {
+    color_eyre::install()?;
     enable_raw_mode()?;
     let mut stdout = io::stdout();
     execute!(stdout, EnterAlternateScreen, EnableMouseCapture)?;
