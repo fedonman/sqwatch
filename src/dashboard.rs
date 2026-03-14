@@ -22,7 +22,7 @@ use crate::{
     },
     views::{
         chrome::{build_frame, popup_rect, render_statusbar, render_titlebar},
-        fields::{FieldAction, FieldSelector, JobField, OrderedField, Ordering},
+        fields::{FieldAction, FieldSelector, JobField, OrderedField, SortDirection},
         filter_tree::{FilterTree, FilterTreeAction},
         job_table::JobTable,
         output_widget::{OutputWidget, StreamKind},
@@ -92,7 +92,7 @@ impl Dashboard {
                 JobField::defaults(),
                 vec![OrderedField {
                     field: JobField::Id,
-                    direction: Ordering::Asc,
+                    direction: SortDirection::Asc,
                 }],
             )
         });
@@ -691,7 +691,7 @@ impl Dashboard {
         if !self.sort_fields.is_empty() {
             for sf in &self.sort_fields {
                 let code = sf.field.format_code().trim_start_matches('%');
-                let asc = matches!(sf.direction, Ordering::Asc);
+                let asc = matches!(sf.direction, SortDirection::Asc);
                 self.params.ordering.push((code.to_string(), asc));
             }
 
@@ -702,7 +702,7 @@ impl Dashboard {
                     .position(|f| std::mem::discriminant(f) == std::mem::discriminant(&first.field))
                     .unwrap_or(0);
                 self.table.primary_sort_col = idx;
-                self.table.sort_asc = matches!(first.direction, Ordering::Asc);
+                self.table.sort_asc = matches!(first.direction, SortDirection::Asc);
             }
         } else {
             self.params.ordering.push(("i".to_string(), true));

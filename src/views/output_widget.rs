@@ -11,6 +11,8 @@ use std::{path::PathBuf, time::Duration};
 use crate::backend::commands::scontrol_show_job;
 use crate::core::live_file::{LiveFileMonitor, MonitorError};
 
+const POLL_INTERVAL: Duration = Duration::from_secs(1);
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum StreamKind {
     Stdout,
@@ -42,7 +44,6 @@ pub struct OutputWidget {
     pub stderr_file: Option<String>,
     monitor: Option<LiveFileMonitor>,
     data_rx: Option<Receiver<Result<String, MonitorError>>>,
-    poll_rate: Duration,
     fstate: FileState,
 }
 
@@ -57,7 +58,6 @@ impl OutputWidget {
             stderr_file: None,
             monitor: None,
             data_rx: None,
-            poll_rate: Duration::from_secs(1),
             fstate: FileState::Missing,
         }
     }
@@ -73,7 +73,7 @@ impl OutputWidget {
 
         if self.monitor.is_none() {
             let (tx, rx) = unbounded();
-            self.monitor = Some(LiveFileMonitor::new(tx, self.poll_rate));
+            self.monitor = Some(LiveFileMonitor::new(tx, POLL_INTERVAL));
             self.data_rx = Some(rx);
         }
 

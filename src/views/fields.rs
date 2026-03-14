@@ -141,23 +141,23 @@ impl JobField {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Ordering {
+pub enum SortDirection {
     Asc,
     Desc,
 }
 
-impl Ordering {
+impl SortDirection {
     pub fn flip(&self) -> Self {
         match self {
-            Ordering::Asc => Ordering::Desc,
-            Ordering::Desc => Ordering::Asc,
+            SortDirection::Asc => SortDirection::Desc,
+            SortDirection::Desc => SortDirection::Asc,
         }
     }
 
     pub fn arrow(&self) -> &'static str {
         match self {
-            Ordering::Asc => "\u{25b2}",
-            Ordering::Desc => "\u{25bc}",
+            SortDirection::Asc => "\u{25b2}",
+            SortDirection::Desc => "\u{25bc}",
         }
     }
 }
@@ -165,7 +165,7 @@ impl Ordering {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct OrderedField {
     pub field: JobField,
-    pub direction: Ordering,
+    pub direction: SortDirection,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -494,7 +494,7 @@ impl FieldSelector {
                     if !already_sorting {
                         self.sort_list.push(OrderedField {
                             field,
-                            direction: Ordering::Asc,
+                            direction: SortDirection::Asc,
                         });
                         self.sort_state.select(Some(self.sort_list.len() - 1));
                     }
@@ -593,7 +593,7 @@ impl FieldSelector {
         self.active = JobField::defaults();
         self.sort_list = vec![OrderedField {
             field: JobField::Id,
-            direction: Ordering::Asc,
+            direction: SortDirection::Asc,
         }];
 
         let mut pool = JobField::enumerate();

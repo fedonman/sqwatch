@@ -2,7 +2,7 @@ use serde::{Deserialize, Serialize};
 use std::{fs, path::PathBuf, str::FromStr};
 
 use crate::backend::{JobState, query::QueryParams};
-use crate::views::fields::{JobField, OrderedField, Ordering};
+use crate::views::fields::{JobField, OrderedField, SortDirection};
 use crate::views::widget_selector::VisibleWidgets;
 
 #[derive(Debug, Default, Serialize, Deserialize)]
@@ -104,8 +104,8 @@ impl SavedColumns {
                 .map(|of| SavedSort {
                     field: of.field.heading().to_string(),
                     direction: match of.direction {
-                        Ordering::Asc => "asc".to_string(),
-                        Ordering::Desc => "desc".to_string(),
+                        SortDirection::Asc => "asc".to_string(),
+                        SortDirection::Desc => "desc".to_string(),
                     },
                 })
                 .collect(),
@@ -128,8 +128,8 @@ impl SavedColumns {
             .filter_map(|s| {
                 let field = lookup(&s.field)?;
                 let direction = match s.direction.as_str() {
-                    "desc" => Ordering::Desc,
-                    _ => Ordering::Asc,
+                    "desc" => SortDirection::Desc,
+                    _ => SortDirection::Asc,
                 };
                 Some(OrderedField { field, direction })
             })

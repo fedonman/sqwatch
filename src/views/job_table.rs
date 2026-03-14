@@ -6,7 +6,7 @@ use ratatui::{
 };
 
 use crate::backend::{Job, JobState};
-use crate::views::fields::{JobField, OrderedField, Ordering};
+use crate::views::fields::{JobField, OrderedField, SortDirection};
 
 pub struct JobTable {
     pub tbl_state: TableState,
@@ -100,7 +100,7 @@ impl JobTable {
                 .position(|f| std::mem::discriminant(f) == std::mem::discriminant(&first.field))
                 .unwrap_or(0);
             self.primary_sort_col = pos;
-            self.sort_asc = matches!(first.direction, Ordering::Asc);
+            self.sort_asc = matches!(first.direction, SortDirection::Asc);
         }
     }
 
@@ -161,8 +161,8 @@ impl JobTable {
                     .iter()
                     .find(|of| of.field.heading() == f.heading())
                     .map(|of| match of.direction {
-                        Ordering::Asc => " \u{25b2}",
-                        Ordering::Desc => " \u{25bc}",
+                        SortDirection::Asc => " \u{25b2}",
+                        SortDirection::Desc => " \u{25bc}",
                     })
                     .unwrap_or("")
             } else {
