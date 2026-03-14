@@ -24,22 +24,24 @@ use crate::{
     },
     views::{
         chrome::{build_frame, popup_rect, render_statusbar, render_titlebar},
+        custom_widget::CustomOutputWidget,
         fields::{FieldAction, FieldSelector, JobField, OrderedField, SortDirection},
         filter_tree::{FilterTree, FilterTreeAction},
         job_table::JobTable,
         output_widget::{OutputWidget, StreamKind},
         script_widget::ScriptWidget,
-        widget_selector::{VisibleWidgets, WidgetSelector, WidgetSelectorAction},
+        widget_selector::{VisibleWidgets, WidgetKind, WidgetSelector, WidgetSelectorAction},
     },
 };
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum FocusWidget {
     Table,
     Script,
     Stdout,
     Stderr,
     Sidebar,
+    Custom(usize),
 }
 
 pub struct Dashboard {
@@ -56,6 +58,7 @@ pub struct Dashboard {
     pub filter_tree: FilterTree,
     pub widget_sel: WidgetSelector,
     pub visible_widgets: VisibleWidgets,
+    pub custom_widgets: Vec<CustomOutputWidget>,
     pub focus: FocusWidget,
     pub notice: String,
     pub notice_expires: Option<Instant>,
@@ -99,6 +102,14 @@ impl Dashboard {
             )
         });
 
+        let visible_widgets = load_layout().unwrap_or_default();
+        let custom_widgets = visible_widgets
+            .custom
+            .iter()
+            .enumerate()
+            .map(|(i, def)| CustomOutputWidget::new(i, def.title.clone(), def.filename.clone()))
+            .collect();
+
         Ok(Self {
             alive: true,
             input: InputLoop::start(InputConfig::default()),
@@ -112,7 +123,8 @@ impl Dashboard {
             script: ScriptWidget::new(),
             filter_tree: FilterTree::new(),
             widget_sel: WidgetSelector::new(),
-            visible_widgets: load_layout().unwrap_or_default(),
+            visible_widgets,
+            custom_widgets,
             focus: FocusWidget::Table,
             notice: String::new(),
             notice_expires: None,
@@ -221,7 +233,6 @@ impl Dashboard {
     // ── Drawing ──────────────────────────────────────────────
 
     pub fn draw(&mut self, frame: &mut Frame) {
-        // Sync filter_tree.open with visible_widgets
         self.filter_tree.open = self.visible_widgets.filters;
 
         let layout = build_frame(frame, &self.visible_widgets);
@@ -229,7 +240,6 @@ impl Dashboard {
         self.draw_titlebar(frame, layout.titlebar);
         self.draw_statusbar(frame, layout.statusbar);
 
-        // Sync right-side widgets to focused job
         self.sync_widgets_to_focused_job();
 
         // Filter sidebar
@@ -255,23 +265,20 @@ impl Dashboard {
             self.focus == FocusWidget::Table,
         );
 
-        // Right-side widgets (only visible ones)
-        if let Some(area) = layout.script {
-            self.script
-                .render_inline(frame, area, self.focus == FocusWidget::Script);
-        }
-        if let Some(area) = layout.stdout {
-            self.stdout_widget
-                .render_inline(frame, area, self.focus == FocusWidget::Stdout);
-        }
-        if let Some(area) = layout.stderr {
-            self.stderr_widget
-                .render_inline(frame, area, self.focus == FocusWidget::Stderr);
+        // Right-panel and bottom-panel widgets
+        for (kind, area) in layout
+            .right_widgets
+            .iter()
+            .chain(layout.bottom_widgets.iter())
+        {
+            self.render_widget_by_kind(frame, kind, *area);
         }
 
         // Popups
         if self.widget_sel.visible {
-            let r = popup_rect(frame.area(), 35, 40);
+            let custom_count = self.visible_widgets.custom.len();
+            let pct_h = (45 + custom_count as u16 * 3).min(80);
+            let r = popup_rect(frame.area(), 50, pct_h);
             self.widget_sel.render(frame, r, &self.visible_widgets);
         }
 
@@ -286,17 +293,47 @@ impl Dashboard {
         }
     }
 
+    fn render_widget_by_kind(&mut self, frame: &mut Frame, kind: &WidgetKind, area: Rect) {
+        match kind {
+            WidgetKind::Script => {
+                self.script
+                    .render_inline(frame, area, self.focus == FocusWidget::Script);
+            }
+            WidgetKind::Stdout => {
+                self.stdout_widget
+                    .render_inline(frame, area, self.focus == FocusWidget::Stdout);
+            }
+            WidgetKind::Stderr => {
+                self.stderr_widget
+                    .render_inline(frame, area, self.focus == FocusWidget::Stderr);
+            }
+            WidgetKind::Custom(i) => {
+                if let Some(cw) = self.custom_widgets.get(*i) {
+                    cw.render_inline(frame, area, self.focus == FocusWidget::Custom(*i));
+                }
+            }
+            WidgetKind::Filters => {}
+        }
+    }
+
     fn sync_widgets_to_focused_job(&mut self) {
         if let Some(job) = self.table.focused_job() {
             let id = job.job_id.clone();
             let name = job.name.clone();
+            let work_dir = job.work_dir.clone();
             self.script.ensure_job(&id, &name);
             self.stdout_widget.ensure_job(&id);
             self.stderr_widget.ensure_job(&id);
+            for cw in &mut self.custom_widgets {
+                cw.ensure_job(&id, work_dir.as_deref());
+            }
         } else {
             self.script.clear_job();
             self.stdout_widget.clear_job();
             self.stderr_widget.clear_job();
+            for cw in &mut self.custom_widgets {
+                cw.clear_job();
+            }
         }
     }
 
@@ -314,7 +351,7 @@ impl Dashboard {
             .filter(|j| j.state == JobState::Running)
             .count();
         let other = self.table.jobs.len() - pending - running;
-        render_statusbar(frame, area, (pending, running, other), self.focus);
+        render_statusbar(frame, area, (pending, running, other), &self.focus);
     }
 
     fn draw_titlebar(&self, frame: &mut Frame, area: Rect) {
@@ -391,15 +428,14 @@ impl Dashboard {
             match action {
                 WidgetSelectorAction::Dismiss => self.widget_sel.visible = false,
                 WidgetSelectorAction::Changed => {
-                    // Sync filter tree state
+                    self.sync_custom_widget_instances();
                     self.filter_tree.open = self.visible_widgets.filters;
                     if self.visible_widgets.filters {
                         self.filter_tree.sync_from_params(&self.params);
                     } else {
                         self.filter_tree.editing = false;
                     }
-                    // Reset focus if current widget is now hidden
-                    if !self.is_widget_visible(self.focus) {
+                    if !self.is_widget_visible(&self.focus) {
                         self.focus = FocusWidget::Table;
                     }
                 }
@@ -474,10 +510,14 @@ impl Dashboard {
         }
 
         // ── Focus-specific dispatch ──
-        match self.focus {
+        match &self.focus {
             FocusWidget::Table => self.on_table_key(key),
-            FocusWidget::Script | FocusWidget::Stdout | FocusWidget::Stderr => {
-                self.on_widget_key(key, self.focus);
+            FocusWidget::Script
+            | FocusWidget::Stdout
+            | FocusWidget::Stderr
+            | FocusWidget::Custom(_) => {
+                let focus = self.focus.clone();
+                self.on_widget_key(key, &focus);
             }
             FocusWidget::Sidebar => self.on_sidebar_key(key),
         }
@@ -506,7 +546,7 @@ impl Dashboard {
         }
     }
 
-    fn on_widget_key(&mut self, key: KeyEvent, widget: FocusWidget) {
+    fn on_widget_key(&mut self, key: KeyEvent, widget: &FocusWidget) {
         match (key.modifiers, key.code) {
             (KeyModifiers::SHIFT, KeyCode::Up) => {
                 self.table.retreat();
@@ -518,6 +558,11 @@ impl Dashboard {
                 FocusWidget::Script => self.script.handle_key(key),
                 FocusWidget::Stdout => self.stdout_widget.handle_key(key),
                 FocusWidget::Stderr => self.stderr_widget.handle_key(key),
+                FocusWidget::Custom(i) => {
+                    if let Some(cw) = self.custom_widgets.get_mut(*i) {
+                        cw.handle_key(key);
+                    }
+                }
                 _ => {}
             },
         }
@@ -560,6 +605,11 @@ impl Dashboard {
         if self.visible_widgets.stderr {
             items.push(FocusWidget::Stderr);
         }
+        for (i, c) in self.visible_widgets.custom.iter().enumerate() {
+            if c.visible {
+                items.push(FocusWidget::Custom(i));
+            }
+        }
         if self.visible_widgets.filters {
             items.push(FocusWidget::Sidebar);
         }
@@ -571,9 +621,9 @@ impl Dashboard {
         if items.len() <= 1 {
             return;
         }
-        let current = items.iter().position(|&p| p == self.focus).unwrap_or(0);
+        let current = items.iter().position(|p| *p == self.focus).unwrap_or(0);
         let next = (current + 1) % items.len();
-        self.focus = items[next];
+        self.focus = items[next].clone();
     }
 
     fn cycle_focus_reverse(&mut self) {
@@ -581,22 +631,49 @@ impl Dashboard {
         if items.len() <= 1 {
             return;
         }
-        let current = items.iter().position(|&p| p == self.focus).unwrap_or(0);
+        let current = items.iter().position(|p| *p == self.focus).unwrap_or(0);
         let next = if current == 0 {
             items.len() - 1
         } else {
             current - 1
         };
-        self.focus = items[next];
+        self.focus = items[next].clone();
     }
 
-    fn is_widget_visible(&self, widget: FocusWidget) -> bool {
+    fn is_widget_visible(&self, widget: &FocusWidget) -> bool {
         match widget {
             FocusWidget::Table => true,
             FocusWidget::Script => self.visible_widgets.script,
             FocusWidget::Stdout => self.visible_widgets.stdout,
             FocusWidget::Stderr => self.visible_widgets.stderr,
             FocusWidget::Sidebar => self.visible_widgets.filters,
+            FocusWidget::Custom(i) => self
+                .visible_widgets
+                .custom
+                .get(*i)
+                .is_some_and(|c| c.visible),
+        }
+    }
+
+    /// Keep custom_widgets vec in sync with visible_widgets.custom definitions.
+    fn sync_custom_widget_instances(&mut self) {
+        let defs = &self.visible_widgets.custom;
+        // Resize: add new or trim removed
+        while self.custom_widgets.len() < defs.len() {
+            let i = self.custom_widgets.len();
+            let def = &defs[i];
+            self.custom_widgets.push(CustomOutputWidget::new(
+                i,
+                def.title.clone(),
+                def.filename.clone(),
+            ));
+        }
+        self.custom_widgets.truncate(defs.len());
+        // Sync index and metadata for each
+        for (i, cw) in self.custom_widgets.iter_mut().enumerate() {
+            cw.def_index = i;
+            cw.title = defs[i].title.clone();
+            cw.filename = defs[i].filename.clone();
         }
     }
 
@@ -616,6 +693,13 @@ impl Dashboard {
         }
         if self.visible_widgets.stderr {
             self.stderr_widget.poll_updates();
+        }
+        for (i, c) in self.visible_widgets.custom.iter().enumerate() {
+            if c.visible
+                && let Some(cw) = self.custom_widgets.get_mut(i)
+            {
+                cw.poll_updates();
+            }
         }
     }
 
@@ -684,13 +768,20 @@ impl Dashboard {
     }
 
     fn rebuild_format(&mut self) {
-        let fmt = self
+        let mut codes: Vec<&str> = self
             .visible_fields
             .iter()
             .map(|f| f.format_code())
-            .collect::<Vec<&str>>()
-            .join("|");
-        self.params.fmt = fmt;
+            .collect();
+
+        // Ensure %Z (WorkDir) is present when custom widgets need it
+        if self.visible_widgets.custom.iter().any(|c| c.visible)
+            && !codes.contains(&"%Z")
+        {
+            codes.push("%Z");
+        }
+
+        self.params.fmt = codes.join("|");
 
         self.params.ordering.clear();
         if !self.sort_fields.is_empty() {

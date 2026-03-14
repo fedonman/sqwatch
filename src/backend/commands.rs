@@ -25,10 +25,12 @@ pub async fn run_cmd(program: &str, args: Vec<String>) -> Result<Output> {
 }
 
 /// Parsed result of `scontrol show job <id> -o`.
+#[expect(dead_code, reason = "work_dir is parsed for completeness; used by custom widgets via Job.work_dir")]
 pub struct JobDetail {
     pub stdout_file: Option<String>,
     pub stderr_file: Option<String>,
     pub command: Option<String>,
+    pub work_dir: Option<String>,
 }
 
 /// Run `scontrol show job <id> -o` and parse the key=value output.
@@ -51,6 +53,7 @@ pub fn scontrol_show_job(job_id: &str) -> Option<JobDetail> {
         stdout_file: kv.get("StdOut").cloned(),
         stderr_file: kv.get("StdErr").cloned(),
         command: kv.get("Command").cloned(),
+        work_dir: kv.get("WorkDir").cloned(),
     })
 }
 
