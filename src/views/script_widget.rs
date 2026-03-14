@@ -6,7 +6,9 @@ use ratatui::{
     text::{Line, Span, Text},
     widgets::{Block, BorderType, Borders, Paragraph, Wrap},
 };
-use std::{collections::HashMap, process::Command};
+use std::process::Command;
+
+use crate::backend::commands::scontrol_show_job;
 
 pub struct ScriptWidget {
     pub job_id: Option<String>,
@@ -131,32 +133,17 @@ impl ScriptWidget {
     }
 
     fn load_content(&mut self) {
-        let id = match &self.job_id {
-            Some(id) => id.clone(),
-            None => {
-                self.body.clear();
-                return;
-            }
-        };
-
-        let result = Command::new("scontrol")
-            .args(["show", "job", &id, "-o"])
-            .output();
-
-        let Ok(output) = result else {
-            self.body = "Failed to execute scontrol command".into();
+        let Some(id) = &self.job_id else {
+            self.body.clear();
             return;
         };
 
-        if !output.status.success() {
-            self.body = "Error retrieving job information".into();
+        let Some(detail) = scontrol_show_job(id) else {
+            self.body = "Failed to retrieve job information".into();
             return;
-        }
+        };
 
-        let raw = String::from_utf8_lossy(&output.stdout);
-        let fields = extract_kv_pairs(&raw);
-
-        let Some(script_path) = fields.get("Command") else {
+        let Some(script_path) = detail.command else {
             self.body = "No script found for this job. Maybe it's wrapped".into();
             return;
         };
@@ -164,14 +151,14 @@ impl ScriptWidget {
         self.path = Some(script_path.clone());
 
         if self.has_bat
-            && let Some(highlighted) = run_bat(script_path)
+            && let Some(highlighted) = run_bat(&script_path)
         {
             self.body = highlighted;
             return;
         }
 
         self.has_bat = false;
-        match std::fs::read_to_string(script_path) {
+        match std::fs::read_to_string(&script_path) {
             Ok(content) => self.body = content,
             Err(_) => {
                 self.body = format!("Failed to read script from path: {}", script_path);
@@ -289,18 +276,6 @@ fn apply_ansi_codes(codes_str: &str, mut style: Style) -> Style {
     }
 
     style
-}
-
-fn extract_kv_pairs(text: &str) -> HashMap<String, String> {
-    let mut map = HashMap::new();
-    for token in text.split_whitespace() {
-        if let Some(eq_pos) = token.find('=') {
-            let k = &token[..eq_pos];
-            let v = &token[eq_pos + 1..];
-            map.insert(k.to_string(), v.to_string());
-        }
-    }
-    map
 }
 
 fn detect_bat() -> bool {

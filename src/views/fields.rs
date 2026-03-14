@@ -7,9 +7,7 @@ use ratatui::{
     widgets::{Block, BorderType, Borders, Clear, List, ListItem, ListState, Paragraph},
 };
 
-const POPUP_BG: Color = Color::Rgb(15, 15, 30);
-const ACCENT: Color = Color::Magenta;
-const DIM_BORDER: Color = Color::Rgb(50, 50, 70);
+use super::theme::{ACCENT, DIM_BORDER, POPUP_BG};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum JobField {

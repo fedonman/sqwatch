@@ -152,49 +152,19 @@ impl Dashboard {
         let mut stats = Vec::new();
         let total = jobs.len();
 
-        if let Some(ref pat) = self.params.user
-            && !pat.is_empty()
-        {
-            match regex::Regex::new(pat) {
-                Ok(re) => {
-                    let before = jobs.len();
-                    jobs.retain(|j| re.is_match(&j.user));
-                    let after = jobs.len();
-                    if before != after && before > 0 {
-                        stats.push(format!(
-                            "user: {}/{} ({:.1}%)",
-                            after,
-                            before,
-                            (after as f64 / before as f64) * 100.0
-                        ));
-                    }
-                }
-                Err(e) => {
-                    self.flash(format!("Invalid user regex pattern: {}", e), 3);
-                }
+        if let Some(ref pat) = self.params.user {
+            match Self::apply_regex_filter(&mut jobs, pat, |j| &j.user) {
+                Ok(Some(stat)) => stats.push(format!("user: {}", stat)),
+                Ok(None) => {}
+                Err(e) => self.flash(format!("Invalid user regex pattern: {}", e), 3),
             }
         }
 
-        if let Some(ref pat) = self.params.name_pattern
-            && !pat.is_empty()
-        {
-            match regex::Regex::new(pat) {
-                Ok(re) => {
-                    let before = jobs.len();
-                    jobs.retain(|j| re.is_match(&j.name));
-                    let after = jobs.len();
-                    if before != after && before > 0 {
-                        stats.push(format!(
-                            "name: {}/{} ({:.1}%)",
-                            after,
-                            before,
-                            (after as f64 / before as f64) * 100.0
-                        ));
-                    }
-                }
-                Err(e) => {
-                    self.flash(format!("Invalid name regex pattern: {}", e), 3);
-                }
+        if let Some(ref pat) = self.params.name_pattern {
+            match Self::apply_regex_filter(&mut jobs, pat, |j| &j.name) {
+                Ok(Some(stat)) => stats.push(format!("name: {}", stat)),
+                Ok(None) => {}
+                Err(e) => self.flash(format!("Invalid name regex pattern: {}", e), 3),
             }
         }
 
@@ -220,6 +190,30 @@ impl Dashboard {
         self.table.set_jobs(jobs);
         self.refreshed_at = Instant::now();
         Ok(())
+    }
+
+    fn apply_regex_filter(
+        jobs: &mut Vec<crate::backend::Job>,
+        pattern: &str,
+        field: fn(&crate::backend::Job) -> &str,
+    ) -> std::result::Result<Option<String>, regex::Error> {
+        if pattern.is_empty() {
+            return Ok(None);
+        }
+        let re = regex::Regex::new(pattern)?;
+        let before = jobs.len();
+        jobs.retain(|j| re.is_match(field(j)));
+        let after = jobs.len();
+        if before != after && before > 0 {
+            Ok(Some(format!(
+                "{}/{} ({:.1}%)",
+                after,
+                before,
+                (after as f64 / before as f64) * 100.0
+            )))
+        } else {
+            Ok(None)
+        }
     }
 
     // ── Drawing ──────────────────────────────────────────────
@@ -477,9 +471,9 @@ impl Dashboard {
         // ── Focus-specific dispatch ──
         match self.focus {
             FocusWidget::Table => self.on_table_key(key),
-            FocusWidget::Script => self.on_script_key(key),
-            FocusWidget::Stdout => self.on_stdout_key(key),
-            FocusWidget::Stderr => self.on_stderr_key(key),
+            FocusWidget::Script | FocusWidget::Stdout | FocusWidget::Stderr => {
+                self.on_widget_key(key, self.focus);
+            }
             FocusWidget::Sidebar => self.on_sidebar_key(key),
         }
     }
@@ -507,7 +501,7 @@ impl Dashboard {
         }
     }
 
-    fn on_script_key(&mut self, key: KeyEvent) {
+    fn on_widget_key(&mut self, key: KeyEvent, widget: FocusWidget) {
         match (key.modifiers, key.code) {
             (KeyModifiers::SHIFT, KeyCode::Up) => {
                 self.table.retreat();
@@ -515,31 +509,12 @@ impl Dashboard {
             (KeyModifiers::SHIFT, KeyCode::Down) => {
                 self.table.advance();
             }
-            _ => self.script.handle_key(key),
-        }
-    }
-
-    fn on_stdout_key(&mut self, key: KeyEvent) {
-        match (key.modifiers, key.code) {
-            (KeyModifiers::SHIFT, KeyCode::Up) => {
-                self.table.retreat();
-            }
-            (KeyModifiers::SHIFT, KeyCode::Down) => {
-                self.table.advance();
-            }
-            _ => self.stdout_widget.handle_key(key),
-        }
-    }
-
-    fn on_stderr_key(&mut self, key: KeyEvent) {
-        match (key.modifiers, key.code) {
-            (KeyModifiers::SHIFT, KeyCode::Up) => {
-                self.table.retreat();
-            }
-            (KeyModifiers::SHIFT, KeyCode::Down) => {
-                self.table.advance();
-            }
-            _ => self.stderr_widget.handle_key(key),
+            _ => match widget {
+                FocusWidget::Script => self.script.handle_key(key),
+                FocusWidget::Stdout => self.stdout_widget.handle_key(key),
+                FocusWidget::Stderr => self.stderr_widget.handle_key(key),
+                _ => {}
+            },
         }
     }
 

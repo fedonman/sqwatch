@@ -7,10 +7,7 @@ use ratatui::{
     widgets::{Block, BorderType, Borders, Clear, Paragraph},
 };
 
-const POPUP_BG: Color = Color::Rgb(15, 15, 30);
-const ACCENT: Color = Color::Magenta;
-const CHECKED_COLOR: Color = Color::Rgb(80, 200, 255);
-const UNCHECKED_COLOR: Color = Color::Rgb(100, 100, 100);
+use super::theme::{ACCENT, CHECKED_COLOR, POPUP_BG, UNCHECKED_COLOR};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum WidgetKind {

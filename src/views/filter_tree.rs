@@ -10,10 +10,8 @@ use regex::Regex;
 
 use crate::backend::{JobState, query::QueryParams};
 
-const ACCENT: Color = Color::Magenta;
-const DIM_BORDER: Color = Color::Rgb(50, 50, 70);
-const CHECKED_COLOR: Color = Color::Rgb(80, 200, 255);
-const UNCHECKED_COLOR: Color = Color::Rgb(100, 100, 100);
+use super::theme::{ACCENT, CHECKED_COLOR, DIM_BORDER, UNCHECKED_COLOR};
+
 const HEADER_COLOR: Color = Color::Rgb(180, 140, 220);
 const INPUT_COLOR: Color = Color::Rgb(200, 180, 100);
 const INVALID_COLOR: Color = Color::Rgb(230, 70, 70);

@@ -48,14 +48,18 @@ impl SavedFilters {
     }
 }
 
-fn config_path() -> PathBuf {
+fn sqwatch_config_dir() -> PathBuf {
     let base = std::env::var("XDG_CONFIG_HOME")
         .map(PathBuf::from)
         .unwrap_or_else(|_| {
             let home = std::env::var("HOME").unwrap_or_else(|_| ".".into());
             PathBuf::from(home).join(".config")
         });
-    base.join("sqwatch").join("filters.json")
+    base.join("sqwatch")
+}
+
+fn config_path() -> PathBuf {
+    sqwatch_config_dir().join("filters.json")
 }
 
 pub fn load_filters() -> Option<SavedFilters> {
@@ -136,13 +140,7 @@ impl SavedColumns {
 }
 
 fn columns_path() -> PathBuf {
-    let base = std::env::var("XDG_CONFIG_HOME")
-        .map(PathBuf::from)
-        .unwrap_or_else(|_| {
-            let home = std::env::var("HOME").unwrap_or_else(|_| ".".into());
-            PathBuf::from(home).join(".config")
-        });
-    base.join("sqwatch").join("columns.json")
+    sqwatch_config_dir().join("columns.json")
 }
 
 pub fn load_columns() -> Option<(Vec<JobField>, Vec<OrderedField>)> {
@@ -178,13 +176,7 @@ struct SavedLayout {
 }
 
 fn layout_path() -> PathBuf {
-    let base = std::env::var("XDG_CONFIG_HOME")
-        .map(PathBuf::from)
-        .unwrap_or_else(|_| {
-            let home = std::env::var("HOME").unwrap_or_else(|_| ".".into());
-            PathBuf::from(home).join(".config")
-        });
-    base.join("sqwatch").join("layout.json")
+    sqwatch_config_dir().join("layout.json")
 }
 
 pub fn load_layout() -> Option<VisibleWidgets> {

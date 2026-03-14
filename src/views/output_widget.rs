@@ -1,4 +1,3 @@
-use color_eyre::Result;
 use crossbeam::channel::{Receiver, unbounded};
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use ratatui::{
@@ -7,8 +6,9 @@ use ratatui::{
     style::{Color, Style},
     widgets::{Block, BorderType, Borders, Paragraph, Wrap},
 };
-use std::{collections::HashMap, path::PathBuf, process::Command, time::Duration};
+use std::{path::PathBuf, time::Duration};
 
+use crate::backend::commands::scontrol_show_job;
 use crate::core::live_file::{LiveFileMonitor, MonitorError};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -215,25 +215,13 @@ impl OutputWidget {
             return;
         };
 
-        let result = Command::new("scontrol")
-            .args(["show", "job", id, "-o"])
-            .output();
-
-        let Ok(output) = result else {
+        let Some(detail) = scontrol_show_job(id) else {
             self.fstate = FileState::Failed;
             return;
         };
 
-        if !output.status.success() {
-            self.fstate = FileState::Failed;
-            return;
-        }
-
-        let raw = String::from_utf8_lossy(&output.stdout);
-        let kv = parse_kv(&raw);
-
-        self.stdout_file = kv.get("StdOut").cloned();
-        self.stderr_file = kv.get("StdErr").cloned();
+        self.stdout_file = detail.stdout_file;
+        self.stderr_file = detail.stderr_file;
 
         let has_current = match self.stream {
             StreamKind::Stdout => self.stdout_file.as_ref().is_some_and(|p| !p.is_empty()),
@@ -246,14 +234,4 @@ impl OutputWidget {
             FileState::Missing
         };
     }
-}
-
-fn parse_kv(text: &str) -> HashMap<String, String> {
-    let mut out = HashMap::new();
-    for token in text.split_whitespace() {
-        if let Some(eq) = token.find('=') {
-            out.insert(token[..eq].to_string(), token[eq + 1..].to_string());
-        }
-    }
-    out
 }

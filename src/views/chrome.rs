@@ -8,11 +8,8 @@ use ratatui::{
 
 use crate::dashboard::FocusWidget;
 use crate::views::filter_tree::SIDEBAR_WIDTH;
+use crate::views::theme::{ACCENT, BAR_BG, FLASH_COLOR};
 use crate::views::widget_selector::VisibleWidgets;
-
-const BAR_BG: Color = Color::Rgb(30, 30, 50);
-const ACCENT: Color = Color::Magenta;
-const FLASH_COLOR: Color = Color::Rgb(255, 200, 80);
 
 pub struct FrameLayout {
     pub titlebar: Rect,
