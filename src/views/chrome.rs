@@ -39,10 +39,7 @@ pub fn build_frame(frame: &mut Frame, widgets: &VisibleWidgets) -> FrameLayout {
     let (sidebar, remaining) = if widgets.filters {
         let cols = Layout::default()
             .direction(Direction::Horizontal)
-            .constraints([
-                Constraint::Length(SIDEBAR_WIDTH),
-                Constraint::Min(10),
-            ])
+            .constraints([Constraint::Length(SIDEBAR_WIDTH), Constraint::Min(10)])
             .split(content);
         (Some(cols[0]), cols[1])
     } else {
@@ -54,10 +51,7 @@ pub fn build_frame(frame: &mut Frame, widgets: &VisibleWidgets) -> FrameLayout {
     let (table_area, right_area) = if right_count > 0 {
         let cols = Layout::default()
             .direction(Direction::Horizontal)
-            .constraints([
-                Constraint::Percentage(50),
-                Constraint::Percentage(50),
-            ])
+            .constraints([Constraint::Percentage(50), Constraint::Percentage(50)])
             .split(remaining);
         (cols[0], Some(cols[1]))
     } else {
@@ -102,12 +96,7 @@ pub fn build_frame(frame: &mut Frame, widgets: &VisibleWidgets) -> FrameLayout {
     }
 }
 
-pub fn render_titlebar(
-    frame: &mut Frame,
-    area: Rect,
-    username: &str,
-    flash: Option<&str>,
-) {
+pub fn render_titlebar(frame: &mut Frame, area: Rect, username: &str, flash: Option<&str>) {
     let bar_style = Style::default().bg(BAR_BG);
 
     // Fill background
@@ -115,16 +104,27 @@ pub fn render_titlebar(
 
     // Vertically center content on the middle row
     let mid_y = area.y + area.height / 2;
-    let row = Rect { x: area.x, y: mid_y, width: area.width, height: 1 };
+    let row = Rect {
+        x: area.x,
+        y: mid_y,
+        width: area.width,
+        height: 1,
+    };
 
     // Left side: brand + optional flash
     let mut left_spans = vec![
         Span::styled("  sqwatch ", Style::default().fg(ACCENT).bg(BAR_BG).bold()),
-        Span::styled("- SLURM Queue Watcher ", Style::default().fg(Color::Rgb(140, 140, 140)).bg(BAR_BG)),
+        Span::styled(
+            "- SLURM Queue Watcher ",
+            Style::default().fg(Color::Rgb(140, 140, 140)).bg(BAR_BG),
+        ),
     ];
 
     if let Some(msg) = flash {
-        left_spans.push(Span::styled(" \u{2502} ", Style::default().fg(Color::DarkGray).bg(BAR_BG)));
+        left_spans.push(Span::styled(
+            " \u{2502} ",
+            Style::default().fg(Color::DarkGray).bg(BAR_BG),
+        ));
         left_spans.push(Span::styled(
             msg,
             Style::default().fg(FLASH_COLOR).bg(BAR_BG),
@@ -153,7 +153,12 @@ pub fn render_titlebar(
     }
 }
 
-pub fn render_statusbar(frame: &mut Frame, area: Rect, counts: (usize, usize, usize), focus: FocusWidget) {
+pub fn render_statusbar(
+    frame: &mut Frame,
+    area: Rect,
+    counts: (usize, usize, usize),
+    focus: FocusWidget,
+) {
     let bar_style = Style::default().bg(BAR_BG);
 
     // Fill background
@@ -161,7 +166,12 @@ pub fn render_statusbar(frame: &mut Frame, area: Rect, counts: (usize, usize, us
 
     // Vertically center content on the middle row
     let mid_y = area.y + area.height / 2;
-    let row = Rect { x: area.x, y: mid_y, width: area.width, height: 1 };
+    let row = Rect {
+        x: area.x,
+        y: mid_y,
+        width: area.width,
+        height: 1,
+    };
 
     // Global bindings (always shown)
     let mut bindings: Vec<(&str, &str)> = vec![
@@ -192,10 +202,7 @@ pub fn render_statusbar(frame: &mut Frame, area: Rect, counts: (usize, usize, us
 
     let mut spans: Vec<Span> = vec![Span::styled("  ", bar_style)];
     for (k, desc) in &bindings {
-        spans.push(Span::styled(
-            *k,
-            Style::default().fg(ACCENT).bg(BAR_BG),
-        ));
+        spans.push(Span::styled(*k, Style::default().fg(ACCENT).bg(BAR_BG)));
         spans.push(Span::styled(
             format!(" {} ", desc),
             Style::default().fg(Color::Rgb(140, 140, 140)).bg(BAR_BG),

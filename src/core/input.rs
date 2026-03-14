@@ -76,6 +76,10 @@ impl InputLoop {
             })
         };
 
-        Self { rx, _tx: tx, _worker: worker }
+        Self {
+            rx,
+            _tx: tx,
+            _worker: worker,
+        }
     }
 }

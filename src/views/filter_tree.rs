@@ -205,13 +205,23 @@ impl FilterTree {
                     self.editing = true;
                     FilterTreeAction::Noop
                 }
-                Focus::SectionItem => {
-                    self.toggle_current(params, known_states, known_partitions, known_qos, known_nodes)
-                }
+                Focus::SectionItem => self.toggle_current(
+                    params,
+                    known_states,
+                    known_partitions,
+                    known_qos,
+                    known_nodes,
+                ),
             },
             KeyCode::Char(' ') => {
                 if self.focus == Focus::SectionItem {
-                    self.toggle_current(params, known_states, known_partitions, known_qos, known_nodes)
+                    self.toggle_current(
+                        params,
+                        known_states,
+                        known_partitions,
+                        known_qos,
+                        known_nodes,
+                    )
                 } else {
                     FilterTreeAction::Noop
                 }
@@ -392,8 +402,22 @@ impl FilterTree {
             width: inner.width,
             height: 3,
         };
-        self.render_input_block(frame, user_area, "Username", &self.user_input, self.user_ok, focused && self.focus == Focus::UserField);
-        self.render_input_block(frame, name_area, "Job Name", &self.name_input, self.name_ok, focused && self.focus == Focus::NameField);
+        self.render_input_block(
+            frame,
+            user_area,
+            "Username",
+            &self.user_input,
+            self.user_ok,
+            focused && self.focus == Focus::UserField,
+        );
+        self.render_input_block(
+            frame,
+            name_area,
+            "Job Name",
+            &self.name_input,
+            self.name_ok,
+            focused && self.focus == Focus::NameField,
+        );
 
         // ── Section items in the remaining space ──
         let list_area = Rect {
@@ -419,23 +443,37 @@ impl FilterTree {
             };
             lines.push(Line::from(Span::styled(
                 header_text,
-                Style::default().fg(HEADER_COLOR).add_modifier(Modifier::BOLD),
+                Style::default()
+                    .fg(HEADER_COLOR)
+                    .add_modifier(Modifier::BOLD),
             )));
 
-            let items = self.section_items_checked(*sec, params, known_states, known_partitions, known_qos, known_nodes);
+            let items = self.section_items_checked(
+                *sec,
+                params,
+                known_states,
+                known_partitions,
+                known_qos,
+                known_nodes,
+            );
             for (ii, (label, checked)) in items.iter().enumerate() {
-                let is_cursor = focused && self.focus == Focus::SectionItem && si == self.section_idx && ii == self.item_idx;
+                let is_cursor = focused
+                    && self.focus == Focus::SectionItem
+                    && si == self.section_idx
+                    && ii == self.item_idx;
                 let mark = if *checked { "\u{25c6}" } else { "\u{25c7}" };
-                let color = if *checked { CHECKED_COLOR } else { UNCHECKED_COLOR };
+                let color = if *checked {
+                    CHECKED_COLOR
+                } else {
+                    UNCHECKED_COLOR
+                };
 
                 let item_label = truncate(label, list_area.width as usize - 5);
                 let text = format!("  {} {}", mark, item_label);
 
                 let mut style = Style::default().fg(color);
                 if is_cursor {
-                    style = style
-                        .fg(Color::White)
-                        .add_modifier(Modifier::BOLD);
+                    style = style.fg(Color::White).add_modifier(Modifier::BOLD);
                 }
 
                 lines.push(Line::from(Span::styled(text, style)));
@@ -443,7 +481,8 @@ impl FilterTree {
         }
 
         // Scroll to keep section cursor visible
-        let cursor_line = self.section_cursor_line(known_states, known_partitions, known_qos, known_nodes);
+        let cursor_line =
+            self.section_cursor_line(known_states, known_partitions, known_qos, known_nodes);
         let visible_height = list_area.height as usize;
         let scroll = if cursor_line >= visible_height {
             cursor_line - visible_height + 1
@@ -481,7 +520,11 @@ impl FilterTree {
         is_focused: bool,
     ) {
         let border_color = if is_focused {
-            if valid == Some(false) { INVALID_COLOR } else { ACCENT }
+            if valid == Some(false) {
+                INVALID_COLOR
+            } else {
+                ACCENT
+            }
         } else if valid == Some(false) {
             INVALID_COLOR
         } else {
@@ -525,13 +568,7 @@ impl FilterTree {
         let mut pos = 0;
         for sec in SECTION_ORDER.iter().take(self.section_idx) {
             pos += 1; // header
-            pos += self.section_len(
-                *sec,
-                known_states,
-                known_partitions,
-                known_qos,
-                known_nodes,
-            );
+            pos += self.section_len(*sec, known_states, known_partitions, known_qos, known_nodes);
         }
         pos += 1; // current section header
         pos += self.item_idx;

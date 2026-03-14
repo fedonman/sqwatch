@@ -263,16 +263,16 @@ impl FieldSelector {
         let pool_items: Vec<ListItem> = self
             .pool
             .iter()
-            .map(|f| ListItem::new(f.heading()).style(Style::default().fg(Color::Rgb(140, 140, 140))))
+            .map(|f| {
+                ListItem::new(f.heading()).style(Style::default().fg(Color::Rgb(140, 140, 140)))
+            })
             .collect();
 
-        let pool_list = List::new(pool_items)
-            .block(pool_block)
-            .highlight_style(
-                Style::default()
-                    .add_modifier(Modifier::BOLD)
-                    .fg(Color::White),
-            );
+        let pool_list = List::new(pool_items).block(pool_block).highlight_style(
+            Style::default()
+                .add_modifier(Modifier::BOLD)
+                .fg(Color::White),
+        );
 
         frame.render_stateful_widget(pool_list, cols[0], &mut self.pool_state);
 
@@ -290,16 +290,16 @@ impl FieldSelector {
         let active_items: Vec<ListItem> = self
             .active
             .iter()
-            .map(|f| ListItem::new(f.heading()).style(Style::default().fg(Color::Rgb(140, 140, 140))))
+            .map(|f| {
+                ListItem::new(f.heading()).style(Style::default().fg(Color::Rgb(140, 140, 140)))
+            })
             .collect();
 
-        let active_list = List::new(active_items)
-            .block(active_block)
-            .highlight_style(
-                Style::default()
-                    .add_modifier(Modifier::BOLD)
-                    .fg(Color::White),
-            );
+        let active_list = List::new(active_items).block(active_block).highlight_style(
+            Style::default()
+                .add_modifier(Modifier::BOLD)
+                .fg(Color::White),
+        );
 
         frame.render_stateful_widget(active_list, cols[1], &mut self.active_state);
 
@@ -323,13 +323,11 @@ impl FieldSelector {
             })
             .collect();
 
-        let sort_list_widget = List::new(sort_items)
-            .block(sort_block)
-            .highlight_style(
-                Style::default()
-                    .add_modifier(Modifier::BOLD)
-                    .fg(Color::White),
-            );
+        let sort_list_widget = List::new(sort_items).block(sort_block).highlight_style(
+            Style::default()
+                .add_modifier(Modifier::BOLD)
+                .fg(Color::White),
+        );
 
         frame.render_stateful_widget(sort_list_widget, cols[2], &mut self.sort_state);
     }

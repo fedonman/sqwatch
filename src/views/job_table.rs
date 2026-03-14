@@ -186,9 +186,7 @@ impl JobTable {
             let tint = state_color(job.state);
 
             let row_style = if is_marked {
-                Style::default()
-                    .fg(tint)
-                    .add_modifier(Modifier::UNDERLINED)
+                Style::default().fg(tint).add_modifier(Modifier::UNDERLINED)
             } else {
                 Style::default().fg(tint)
             };
@@ -255,7 +253,11 @@ impl JobTable {
                     .borders(Borders::ALL)
                     .border_type(BorderType::Rounded)
                     .title(caption)
-                    .border_style(Style::default().fg(if focused { Color::Magenta } else { Color::Rgb(60, 60, 80) })),
+                    .border_style(Style::default().fg(if focused {
+                        Color::Magenta
+                    } else {
+                        Color::Rgb(60, 60, 80)
+                    })),
             )
             .row_highlight_style(
                 Style::default()

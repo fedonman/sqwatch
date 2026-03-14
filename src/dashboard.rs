@@ -17,7 +17,9 @@ use crate::{
         query::{QueryParams, fetch_jobs},
     },
     core::{
-        config::{load_columns, load_filters, load_layout, save_columns, save_filters, save_layout},
+        config::{
+            load_columns, load_filters, load_layout, save_columns, save_filters, save_layout,
+        },
         input::{InputConfig, InputLoop, Signal},
     },
     views::{
@@ -26,8 +28,8 @@ use crate::{
         filter_tree::{FilterTree, FilterTreeAction},
         job_table::JobTable,
         output_widget::{OutputWidget, StreamKind},
-        widget_selector::{WidgetSelector, WidgetSelectorAction, VisibleWidgets},
         script_widget::ScriptWidget,
+        widget_selector::{VisibleWidgets, WidgetSelector, WidgetSelectorAction},
     },
 };
 
@@ -245,8 +247,13 @@ impl Dashboard {
         }
 
         // Job table
-        self.table
-            .render(frame, layout.table, &self.visible_fields, &self.sort_fields, self.focus == FocusWidget::Table);
+        self.table.render(
+            frame,
+            layout.table,
+            &self.visible_fields,
+            &self.sort_fields,
+            self.focus == FocusWidget::Table,
+        );
 
         // Right-side widgets (only visible ones)
         if let Some(area) = layout.script {
@@ -396,12 +403,10 @@ impl Dashboard {
                         self.focus = FocusWidget::Table;
                     }
                 }
-                WidgetSelectorAction::Save => {
-                    match save_layout(&self.visible_widgets) {
-                        Ok(_) => self.flash("Layout settings saved".into(), 3),
-                        Err(e) => self.flash(format!("Failed to save layout: {}", e), 3),
-                    }
-                }
+                WidgetSelectorAction::Save => match save_layout(&self.visible_widgets) {
+                    Ok(_) => self.flash("Layout settings saved".into(), 3),
+                    Err(e) => self.flash(format!("Failed to save layout: {}", e), 3),
+                },
                 WidgetSelectorAction::Noop => {}
             }
             return;

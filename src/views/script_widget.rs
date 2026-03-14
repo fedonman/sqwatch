@@ -12,8 +12,7 @@ use std::sync::LazyLock;
 
 use crate::backend::commands::scontrol_show_job;
 
-static ANSI_ESCAPE_RE: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r"\x1B\[([0-9;]*)m").unwrap());
+static ANSI_ESCAPE_RE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"\x1B\[([0-9;]*)m").unwrap());
 
 pub struct ScriptWidget {
     pub job_id: Option<String>,
