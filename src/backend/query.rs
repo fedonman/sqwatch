@@ -1,7 +1,6 @@
 use async_process::{Command, Output};
 use color_eyre::Result;
 use color_eyre::eyre::Error;
-use std::collections::HashMap;
 use std::str::FromStr;
 
 use super::Job;
@@ -16,14 +15,12 @@ pub struct QueryParams {
     pub name_pattern: Option<String>,
     pub nodes: Vec<String>,
     pub fmt: String,
-    pub ordering: HashMap<String, bool>,
+    /// Sort fields in priority order: (field_code, ascending).
+    pub ordering: Vec<(String, bool)>,
 }
 
 impl Default for QueryParams {
     fn default() -> Self {
-        let mut ordering = HashMap::new();
-        ordering.insert("i".to_string(), true);
-
         Self {
             user: None,
             statuses: Vec::new(),
@@ -32,7 +29,7 @@ impl Default for QueryParams {
             name_pattern: None,
             nodes: Vec::new(),
             fmt: "%i|%j|%u|%T|%M|%N|%C|%m|%P|%q".to_string(),
-            ordering,
+            ordering: vec![("i".to_string(), true)],
         }
     }
 }
@@ -97,7 +94,7 @@ impl QueryParams {
                         format!("-{}", field)
                     }
                 })
-                .collect::<Vec<_>>()
+                .collect::<Vec<String>>()
                 .join(",");
             args.push("--sort".into());
             args.push(sort_str);
@@ -157,10 +154,6 @@ fn decode_output(output: &Output, fmt: &str) -> Result<Vec<Job>> {
             let val = cell.trim().to_string();
             if val.is_empty() || val == "N/A" {
                 continue;
-            }
-
-            if idx >= col_codes.len() {
-                break;
             }
 
             match col_codes[idx] {

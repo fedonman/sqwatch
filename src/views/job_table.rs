@@ -2,11 +2,11 @@ use ratatui::{
     Frame,
     layout::{Constraint, Rect},
     style::{Color, Modifier, Style},
-    widgets::{Block, Borders, Cell, Paragraph, Row, Table, TableState},
+    widgets::{Block, BorderType, Borders, Cell, Paragraph, Row, Table, TableState},
 };
 
 use crate::backend::{Job, JobState};
-use crate::views::fields::{JobField, OrderedField, Ordering};
+use crate::views::fields::{JobField, OrderedField, SortDirection};
 
 pub struct JobTable {
     pub tbl_state: TableState,
@@ -82,7 +82,7 @@ impl JobTable {
     }
 
     pub fn everything_marked(&self) -> bool {
-        self.marked.len() == self.jobs.len()
+        !self.jobs.is_empty() && self.marked.len() == self.jobs.len()
     }
 
     pub fn mark_all(&mut self) {
@@ -100,7 +100,7 @@ impl JobTable {
                 .position(|f| std::mem::discriminant(f) == std::mem::discriminant(&first.field))
                 .unwrap_or(0);
             self.primary_sort_col = pos;
-            self.sort_asc = matches!(first.direction, Ordering::Asc);
+            self.sort_asc = matches!(first.direction, SortDirection::Asc);
         }
     }
 
@@ -138,6 +138,7 @@ impl JobTable {
         area: Rect,
         visible: &[JobField],
         sort_fields: &[OrderedField],
+        focused: bool,
     ) {
         if !sort_fields.is_empty() {
             self.sync_sort(visible, sort_fields);
@@ -145,7 +146,7 @@ impl JobTable {
 
         if visible.is_empty() {
             let msg = Paragraph::new("No columns selected. Press 'c' to configure columns.")
-                .style(Style::default().fg(Color::Yellow))
+                .style(Style::default().fg(Color::Rgb(255, 170, 50)))
                 .block(Block::default().title("Warning").borders(Borders::ALL));
             frame.render_widget(msg, area);
             return;
@@ -160,8 +161,8 @@ impl JobTable {
                     .iter()
                     .find(|of| of.field.heading() == f.heading())
                     .map(|of| match of.direction {
-                        Ordering::Asc => " \u{2191}",
-                        Ordering::Desc => " \u{2193}",
+                        SortDirection::Asc => " \u{25b2}",
+                        SortDirection::Desc => " \u{25bc}",
                     })
                     .unwrap_or("")
             } else {
@@ -169,14 +170,15 @@ impl JobTable {
             };
 
             let sty = Style::default()
-                .fg(Color::White)
-                .add_modifier(Modifier::BOLD);
+                .fg(Color::Magenta)
+                .add_modifier(Modifier::BOLD)
+                .add_modifier(Modifier::UNDERLINED);
 
             Cell::from(format!("{}{}", f.heading(), indicator)).style(sty)
         });
 
         let header = Row::new(header_cells)
-            .style(Style::default().bg(Color::DarkGray))
+            .style(Style::default().bg(Color::Rgb(25, 15, 40)))
             .height(1);
 
         let data_rows = self.jobs.iter().enumerate().map(|(i, job)| {
@@ -184,7 +186,7 @@ impl JobTable {
             let tint = state_color(job.state);
 
             let row_style = if is_marked {
-                Style::default().fg(tint).add_modifier(Modifier::REVERSED)
+                Style::default().fg(tint).add_modifier(Modifier::UNDERLINED)
             } else {
                 Style::default().fg(tint)
             };
@@ -195,8 +197,9 @@ impl JobTable {
                     let txt = match f {
                         JobField::Id => job.job_id.clone(),
                         JobField::Name => {
-                            if job.name.len() > 30 {
-                                format!("{}...", &job.name[0..27])
+                            if job.name.chars().count() > 30 {
+                                let truncated: String = job.name.chars().take(27).collect();
+                                format!("{}...", truncated)
                             } else {
                                 job.name.clone()
                             }
@@ -245,9 +248,23 @@ impl JobTable {
         let caption = format!("{} Jobs", self.jobs.len());
         let table = Table::new(data_rows, widths)
             .header(header)
-            .block(Block::default().borders(Borders::ALL).title(caption))
-            .row_highlight_style(Style::default().add_modifier(Modifier::BOLD))
-            .highlight_symbol(" \u{25b6} ");
+            .block(
+                Block::default()
+                    .borders(Borders::ALL)
+                    .border_type(BorderType::Rounded)
+                    .title(caption)
+                    .border_style(Style::default().fg(if focused {
+                        Color::Magenta
+                    } else {
+                        Color::Rgb(80, 80, 110)
+                    })),
+            )
+            .row_highlight_style(
+                Style::default()
+                    .add_modifier(Modifier::BOLD)
+                    .bg(Color::Rgb(35, 25, 55)),
+            )
+            .highlight_symbol(" \u{25cf} ");
 
         frame.render_stateful_widget(table, area, &mut self.tbl_state);
     }
@@ -267,13 +284,13 @@ impl JobTable {
 
 fn state_color(s: JobState) -> Color {
     match s {
-        JobState::Pending => Color::Yellow,
-        JobState::Running => Color::Green,
-        JobState::Completed => Color::Blue,
+        JobState::Pending => Color::Rgb(255, 170, 50),
+        JobState::Running => Color::Rgb(50, 210, 170),
+        JobState::Completed => Color::Rgb(120, 140, 180),
         JobState::Failed | JobState::Timeout | JobState::NodeFail | JobState::BootFail => {
-            Color::Red
+            Color::Rgb(230, 70, 70)
         }
-        JobState::Cancelled => Color::Magenta,
-        _ => Color::White,
+        JobState::Cancelled => Color::Rgb(200, 180, 50),
+        _ => Color::Rgb(180, 180, 180),
     }
 }

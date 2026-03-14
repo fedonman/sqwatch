@@ -17,18 +17,30 @@ use crate::{
         query::{QueryParams, fetch_jobs},
     },
     core::{
-        config::{load_columns, load_filters, save_columns, save_filters},
+        config::{
+            load_columns, load_filters, load_layout, save_columns, save_filters, save_layout,
+        },
         input::{InputConfig, InputLoop, Signal},
     },
     views::{
         chrome::{build_frame, popup_rect, render_statusbar, render_titlebar},
-        fields::{FieldAction, FieldSelector, JobField, OrderedField, Ordering},
+        fields::{FieldAction, FieldSelector, JobField, OrderedField, SortDirection},
+        filter_tree::{FilterTree, FilterTreeAction},
         job_table::JobTable,
-        output_pane::OutputPane,
-        script_pane::ScriptPane,
-        search::{SearchAction, SearchDialog},
+        output_widget::{OutputWidget, StreamKind},
+        script_widget::ScriptWidget,
+        widget_selector::{VisibleWidgets, WidgetSelector, WidgetSelectorAction},
     },
 };
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum FocusWidget {
+    Table,
+    Script,
+    Stdout,
+    Stderr,
+    Sidebar,
+}
 
 pub struct Dashboard {
     pub alive: bool,
@@ -37,10 +49,14 @@ pub struct Dashboard {
     pub params: QueryParams,
     pub rt: Runtime,
     pub refreshed_at: Instant,
-    pub search_dlg: SearchDialog,
     pub field_sel: FieldSelector,
-    pub output: OutputPane,
-    pub script: ScriptPane,
+    pub stdout_widget: OutputWidget,
+    pub stderr_widget: OutputWidget,
+    pub script: ScriptWidget,
+    pub filter_tree: FilterTree,
+    pub widget_sel: WidgetSelector,
+    pub visible_widgets: VisibleWidgets,
+    pub focus: FocusWidget,
     pub notice: String,
     pub notice_expires: Option<Instant>,
     pub refresh_secs: u64,
@@ -78,7 +94,7 @@ impl Dashboard {
                 JobField::defaults(),
                 vec![OrderedField {
                     field: JobField::Id,
-                    direction: Ordering::Asc,
+                    direction: SortDirection::Asc,
                 }],
             )
         });
@@ -90,10 +106,14 @@ impl Dashboard {
             params,
             rt,
             refreshed_at: Instant::now(),
-            search_dlg: SearchDialog::new(),
             field_sel: FieldSelector::new(visible_fields.clone(), sort_fields.clone()),
-            output: OutputPane::new(),
-            script: ScriptPane::new(),
+            stdout_widget: OutputWidget::new_for(StreamKind::Stdout),
+            stderr_widget: OutputWidget::new_for(StreamKind::Stderr),
+            script: ScriptWidget::new(),
+            filter_tree: FilterTree::new(),
+            widget_sel: WidgetSelector::new(),
+            visible_widgets: load_layout().unwrap_or_default(),
+            focus: FocusWidget::Table,
             notice: String::new(),
             notice_expires: None,
             refresh_secs: 1,
@@ -134,49 +154,19 @@ impl Dashboard {
         let mut stats = Vec::new();
         let total = jobs.len();
 
-        if let Some(ref pat) = self.params.user
-            && !pat.is_empty()
-        {
-            match regex::Regex::new(pat) {
-                Ok(re) => {
-                    let before = jobs.len();
-                    jobs.retain(|j| re.is_match(&j.user));
-                    let after = jobs.len();
-                    if before != after && before > 0 {
-                        stats.push(format!(
-                            "user: {}/{} ({:.1}%)",
-                            after,
-                            before,
-                            (after as f64 / before as f64) * 100.0
-                        ));
-                    }
-                }
-                Err(e) => {
-                    self.flash(format!("Invalid user regex pattern: {}", e), 3);
-                }
+        if let Some(ref pat) = self.params.user {
+            match Self::apply_regex_filter(&mut jobs, pat, |j| &j.user) {
+                Ok(Some(stat)) => stats.push(format!("user: {}", stat)),
+                Ok(None) => {}
+                Err(e) => self.flash(format!("Invalid user regex pattern: {}", e), 3),
             }
         }
 
-        if let Some(ref pat) = self.params.name_pattern
-            && !pat.is_empty()
-        {
-            match regex::Regex::new(pat) {
-                Ok(re) => {
-                    let before = jobs.len();
-                    jobs.retain(|j| re.is_match(&j.name));
-                    let after = jobs.len();
-                    if before != after && before > 0 {
-                        stats.push(format!(
-                            "name: {}/{} ({:.1}%)",
-                            after,
-                            before,
-                            (after as f64 / before as f64) * 100.0
-                        ));
-                    }
-                }
-                Err(e) => {
-                    self.flash(format!("Invalid name regex pattern: {}", e), 3);
-                }
+        if let Some(ref pat) = self.params.name_pattern {
+            match Self::apply_regex_filter(&mut jobs, pat, |j| &j.name) {
+                Ok(Some(stat)) => stats.push(format!("name: {}", stat)),
+                Ok(None) => {}
+                Err(e) => self.flash(format!("Invalid name regex pattern: {}", e), 3),
             }
         }
 
@@ -204,54 +194,110 @@ impl Dashboard {
         Ok(())
     }
 
+    fn apply_regex_filter(
+        jobs: &mut Vec<crate::backend::Job>,
+        pattern: &str,
+        field: fn(&crate::backend::Job) -> &str,
+    ) -> std::result::Result<Option<String>, regex::Error> {
+        if pattern.is_empty() {
+            return Ok(None);
+        }
+        let re = regex::Regex::new(pattern)?;
+        let before = jobs.len();
+        jobs.retain(|j| re.is_match(field(j)));
+        let after = jobs.len();
+        if before != after && before > 0 {
+            Ok(Some(format!(
+                "{}/{} ({:.1}%)",
+                after,
+                before,
+                (after as f64 / before as f64) * 100.0
+            )))
+        } else {
+            Ok(None)
+        }
+    }
+
+    // ── Drawing ──────────────────────────────────────────────
+
     pub fn draw(&mut self, frame: &mut Frame) {
-        let regions = build_frame(frame);
+        // Sync filter_tree.open with visible_widgets
+        self.filter_tree.open = self.visible_widgets.filters;
 
-        self.draw_titlebar(frame, regions[0]);
-        self.draw_job_table(frame, regions[1]);
-        self.draw_statusbar(frame, regions[2]);
+        let layout = build_frame(frame, &self.visible_widgets);
 
-        if self.search_dlg.visible {
-            let r = popup_rect(frame.area(), 80, 80);
-            self.draw_search(frame, r);
+        self.draw_titlebar(frame, layout.titlebar);
+        self.draw_statusbar(frame, layout.statusbar);
+
+        // Sync right-side widgets to focused job
+        self.sync_widgets_to_focused_job();
+
+        // Filter sidebar
+        if let Some(sidebar_area) = layout.sidebar {
+            self.filter_tree.render(
+                frame,
+                sidebar_area,
+                self.focus == FocusWidget::Sidebar,
+                &self.params,
+                &self.known_states,
+                &self.known_partitions,
+                &self.known_qos,
+                &self.known_nodes,
+            );
         }
 
-        if self.script.visible {
-            let r = popup_rect(frame.area(), 80, 60);
-            self.script.render(frame, r);
+        // Job table
+        self.table.render(
+            frame,
+            layout.table,
+            &self.visible_fields,
+            &self.sort_fields,
+            self.focus == FocusWidget::Table,
+        );
+
+        // Right-side widgets (only visible ones)
+        if let Some(area) = layout.script {
+            self.script
+                .render_inline(frame, area, self.focus == FocusWidget::Script);
+        }
+        if let Some(area) = layout.stdout {
+            self.stdout_widget
+                .render_inline(frame, area, self.focus == FocusWidget::Stdout);
+        }
+        if let Some(area) = layout.stderr {
+            self.stderr_widget
+                .render_inline(frame, area, self.focus == FocusWidget::Stderr);
+        }
+
+        // Popups
+        if self.widget_sel.visible {
+            let r = popup_rect(frame.area(), 35, 40);
+            self.widget_sel.render(frame, r, &self.visible_widgets);
         }
 
         if self.field_sel.visible {
-            let r = popup_rect(frame.area(), 80, 80);
+            let r = popup_rect(frame.area(), 75, 75);
             self.field_sel.render(frame, r);
         }
 
-        if self.output.visible {
-            let r = popup_rect(frame.area(), 80, 80);
-            self.output.render(frame, r);
-        }
-
         if self.confirming_cancel {
-            let r = popup_rect(frame.area(), 50, 30);
+            let r = popup_rect(frame.area(), 45, 25);
             self.draw_cancel_confirm(frame, r);
         }
     }
 
-    fn draw_job_table(&mut self, frame: &mut Frame, area: Rect) {
-        self.table
-            .render(frame, area, &self.visible_fields, &self.sort_fields);
-    }
-
-    fn draw_search(&mut self, frame: &mut Frame, area: Rect) {
-        self.search_dlg.render(
-            frame,
-            area,
-            &self.params,
-            &self.known_states,
-            &self.known_partitions,
-            &self.known_qos,
-            &self.known_nodes,
-        );
+    fn sync_widgets_to_focused_job(&mut self) {
+        if let Some(job) = self.table.focused_job() {
+            let id = job.job_id.clone();
+            let name = job.name.clone();
+            self.script.ensure_job(&id, &name);
+            self.stdout_widget.ensure_job(&id);
+            self.stderr_widget.ensure_job(&id);
+        } else {
+            self.script.clear_job();
+            self.stdout_widget.clear_job();
+            self.stderr_widget.clear_job();
+        }
     }
 
     fn draw_statusbar(&self, frame: &mut Frame, area: Rect) {
@@ -268,12 +314,10 @@ impl Dashboard {
             .filter(|j| j.state == JobState::Running)
             .count();
         let other = self.table.jobs.len() - pending - running;
-        render_statusbar(frame, area, (pending, running, other));
+        render_statusbar(frame, area, (pending, running, other), self.focus);
     }
 
     fn draw_titlebar(&self, frame: &mut Frame, area: Rect) {
-        let filters = self.filter_summary();
-
         let flash = if let Some(deadline) = self.notice_expires {
             if Instant::now() < deadline {
                 Some(self.notice.as_str())
@@ -284,7 +328,7 @@ impl Dashboard {
             None
         };
 
-        render_titlebar(frame, area, &filters, &self.login_user, flash);
+        render_titlebar(frame, area, &self.login_user, flash);
     }
 
     fn draw_cancel_confirm(&self, frame: &mut Frame, area: Rect) {
@@ -301,17 +345,21 @@ impl Dashboard {
         };
 
         let blk = Block::default()
-            .title(Line::from("Confirm Cancel").centered())
-            .borders(Borders::NONE)
-            .style(Style::default().bg(Color::Black));
+            .title(Line::from(" \u{25c6} Confirm Cancel \u{25c6} ").centered())
+            .borders(Borders::ALL)
+            .border_type(ratatui::widgets::BorderType::Rounded)
+            .border_style(Style::default().fg(Color::Rgb(230, 70, 70)))
+            .style(Style::default().bg(Color::Rgb(15, 15, 30)));
 
         let widget = Paragraph::new(msg)
-            .style(Style::default().fg(Color::Cyan))
+            .style(Style::default().fg(Color::Rgb(255, 170, 50)))
             .block(blk)
             .centered();
 
         frame.render_widget(widget, area);
     }
+
+    // ── Input handling ───────────────────────────────────────
 
     fn process_input(&mut self) -> Result<()> {
         match self.input.rx.recv()? {
@@ -325,87 +373,166 @@ impl Dashboard {
     }
 
     fn on_keypress(&mut self, key: KeyEvent) {
+        // ── Popup-level dispatch (highest priority) ──
+        if self.confirming_cancel {
+            match key.code {
+                KeyCode::Char('y') => {
+                    self.do_cancel();
+                    self.confirming_cancel = false;
+                }
+                KeyCode::Char('n') | KeyCode::Esc => self.confirming_cancel = false,
+                _ => {}
+            }
+            return;
+        }
+
+        if self.widget_sel.visible {
+            let action = self.widget_sel.handle_key(key, &mut self.visible_widgets);
+            match action {
+                WidgetSelectorAction::Dismiss => self.widget_sel.visible = false,
+                WidgetSelectorAction::Changed => {
+                    // Sync filter tree state
+                    self.filter_tree.open = self.visible_widgets.filters;
+                    if self.visible_widgets.filters {
+                        self.filter_tree.sync_from_params(&self.params);
+                    } else {
+                        self.filter_tree.editing = false;
+                    }
+                    // Reset focus if current widget is now hidden
+                    if !self.is_widget_visible(self.focus) {
+                        self.focus = FocusWidget::Table;
+                    }
+                }
+                WidgetSelectorAction::Save => match save_layout(&self.visible_widgets) {
+                    Ok(_) => self.flash("Layout settings saved".into(), 3),
+                    Err(e) => self.flash(format!("Failed to save layout: {}", e), 3),
+                },
+                WidgetSelectorAction::Noop => {}
+            }
+            return;
+        }
+
+        if self.field_sel.visible {
+            let action = self.field_sel.handle_key(key);
+            match action {
+                FieldAction::Dismiss => self.field_sel.visible = false,
+                FieldAction::Confirm => {
+                    self.visible_fields = self.field_sel.active.clone();
+                    self.sort_fields = self.field_sel.sort_list.clone();
+                    if let Err(e) = self.reload_jobs() {
+                        self.flash(format!("Failed to refresh: {}", e), 3);
+                    }
+                }
+                FieldAction::Save => {
+                    self.visible_fields = self.field_sel.active.clone();
+                    self.sort_fields = self.field_sel.sort_list.clone();
+                    match save_columns(&self.visible_fields, &self.sort_fields) {
+                        Ok(_) => self.flash("Column settings saved".into(), 3),
+                        Err(e) => self.flash(format!("Failed to save columns: {}", e), 3),
+                    }
+                }
+                FieldAction::Noop => {}
+            }
+            return;
+        }
+
+        // If editing a text field in the sidebar, send all keys there
+        if self.focus == FocusWidget::Sidebar && self.filter_tree.is_editing() {
+            self.on_sidebar_key(key);
+            return;
+        }
+
+        // ── Global keys ──
         match (key.modifiers, key.code) {
             (_, KeyCode::Esc) | (KeyModifiers::CONTROL, KeyCode::Char('c')) => {
-                if self.any_overlay_open() {
-                    self.close_all_overlays();
+                if self.focus != FocusWidget::Table {
+                    self.focus = FocusWidget::Table;
                 } else {
                     self.alive = false;
                 }
+                return;
             }
-
-            (_, KeyCode::Char('f')) if !self.script.visible && !self.search_dlg.visible => {
-                self.search_dlg.visible = true;
-                self.search_dlg.load_from(&self.params);
+            (_, KeyCode::Tab) => {
+                self.cycle_focus();
+                return;
             }
+            (KeyModifiers::SHIFT, KeyCode::BackTab) => {
+                self.cycle_focus_reverse();
+                return;
+            }
+            (_, KeyCode::Char('w')) => {
+                self.widget_sel.visible = true;
+                return;
+            }
+            (_, KeyCode::Char('c')) if self.focus == FocusWidget::Table => {
+                self.field_sel =
+                    FieldSelector::new(self.visible_fields.clone(), self.sort_fields.clone());
+                self.field_sel.visible = true;
+                return;
+            }
+            _ => {}
+        }
 
-            (_, KeyCode::Up)
-                if !self.search_dlg.visible
-                    && !self.script.visible
-                    && !self.field_sel.visible
-                    && !self.output.visible =>
-            {
+        // ── Focus-specific dispatch ──
+        match self.focus {
+            FocusWidget::Table => self.on_table_key(key),
+            FocusWidget::Script | FocusWidget::Stdout | FocusWidget::Stderr => {
+                self.on_widget_key(key, self.focus);
+            }
+            FocusWidget::Sidebar => self.on_sidebar_key(key),
+        }
+    }
+
+    fn on_table_key(&mut self, key: KeyEvent) {
+        match (key.modifiers, key.code) {
+            (_, KeyCode::Up) => {
                 self.table.retreat();
             }
-            (_, KeyCode::Down)
-                if !self.search_dlg.visible
-                    && !self.script.visible
-                    && !self.field_sel.visible
-                    && !self.output.visible =>
-            {
+            (_, KeyCode::Down) => {
                 self.table.advance();
             }
-
-            (_, KeyCode::Char(' '))
-                if !self.search_dlg.visible && !self.script.visible && !self.field_sel.visible =>
-            {
-                self.table.flip_selection();
-            }
-            (_, KeyCode::Char('a'))
-                if !self.search_dlg.visible && !self.script.visible && !self.field_sel.visible =>
-            {
+            (_, KeyCode::Char(' ')) => self.table.flip_selection(),
+            (_, KeyCode::Char('a')) => {
                 if self.table.everything_marked() {
                     self.table.unmark_all();
                 } else {
                     self.table.mark_all();
                 }
             }
-            (_, KeyCode::Char('x'))
-                if !self.search_dlg.visible && !self.script.visible && !self.field_sel.visible =>
-            {
+            (_, KeyCode::Char('x')) => {
                 self.confirming_cancel = true;
             }
-            (_, KeyCode::Char('y'))
-                if self.confirming_cancel
-                    && !self.search_dlg.visible
-                    && !self.script.visible
-                    && !self.field_sel.visible =>
-            {
-                self.do_cancel();
-                self.confirming_cancel = false;
-            }
-            (_, KeyCode::Char('n'))
-                if self.confirming_cancel
-                    && !self.search_dlg.visible
-                    && !self.script.visible
-                    && !self.field_sel.visible =>
-            {
-                self.confirming_cancel = false;
-            }
+            _ => {}
+        }
+    }
 
-            (_, KeyCode::Char('c'))
-                if !self.search_dlg.visible
-                    && !self.script.visible
-                    && !self.field_sel.visible
-                    && !self.confirming_cancel =>
-            {
-                self.field_sel =
-                    FieldSelector::new(self.visible_fields.clone(), self.sort_fields.clone());
-                self.field_sel.visible = true;
+    fn on_widget_key(&mut self, key: KeyEvent, widget: FocusWidget) {
+        match (key.modifiers, key.code) {
+            (KeyModifiers::SHIFT, KeyCode::Up) => {
+                self.table.retreat();
             }
+            (KeyModifiers::SHIFT, KeyCode::Down) => {
+                self.table.advance();
+            }
+            _ => match widget {
+                FocusWidget::Script => self.script.handle_key(key),
+                FocusWidget::Stdout => self.stdout_widget.handle_key(key),
+                FocusWidget::Stderr => self.stderr_widget.handle_key(key),
+                _ => {}
+            },
+        }
+    }
 
-            _ if self.search_dlg.visible => {
-                let action = self.search_dlg.handle_key(
+    fn on_sidebar_key(&mut self, key: KeyEvent) {
+        match key.code {
+            KeyCode::Char('s') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+                match save_filters(&self.params) {
+                    Ok(_) => self.flash("Filter settings saved".into(), 3),
+                    Err(e) => self.flash(format!("Failed to save filters: {}", e), 3),
+                }
+            }
+            _ => {
+                let action = self.filter_tree.handle_key(
                     key,
                     &mut self.params,
                     &self.known_states,
@@ -413,135 +540,90 @@ impl Dashboard {
                     &self.known_qos,
                     &self.known_nodes,
                 );
-                match action {
-                    SearchAction::Dismiss => self.search_dlg.visible = false,
-                    SearchAction::Confirm => {
-                        if let Err(e) = self.apply_search() {
-                            self.flash(format!("Failed to apply filters: {}", e), 3);
-                        }
-                    }
-                    SearchAction::Save => match save_filters(&self.params) {
-                        Ok(_) => self.flash("Filter settings saved".into(), 3),
-                        Err(e) => self.flash(format!("Failed to save filters: {}", e), 3),
-                    },
-                    SearchAction::Noop => {}
-                }
-            }
-
-            (_, KeyCode::Char('s'))
-                if !self.search_dlg.visible
-                    && !self.script.visible
-                    && !self.field_sel.visible
-                    && !self.output.visible =>
-            {
-                if let Some(j) = self.table.focused_job() {
-                    self.script.show(j.job_id.clone(), j.name.clone());
-                }
-            }
-
-            (KeyModifiers::SHIFT, KeyCode::Up) if self.script.visible => {
-                if self.table.retreat()
-                    && let Some(j) = self.table.focused_job()
+                if action == FilterTreeAction::Applied
+                    && let Err(e) = self.apply_search()
                 {
-                    self.script.switch_job(j.job_id.clone(), j.name.clone());
+                    self.flash(format!("Failed to apply filters: {}", e), 3);
                 }
             }
-            (KeyModifiers::SHIFT, KeyCode::Down) if self.script.visible => {
-                if self.table.advance()
-                    && let Some(j) = self.table.focused_job()
-                {
-                    self.script.switch_job(j.job_id.clone(), j.name.clone());
-                }
-            }
-            _ if self.script.visible => {
-                self.script.handle_key(key);
-            }
+        }
+    }
 
-            (_, KeyCode::Enter) if self.script.visible => {
-                self.script.visible = false;
-            }
+    fn focusable_widgets(&self) -> Vec<FocusWidget> {
+        let mut items = vec![FocusWidget::Table];
+        if self.visible_widgets.script {
+            items.push(FocusWidget::Script);
+        }
+        if self.visible_widgets.stdout {
+            items.push(FocusWidget::Stdout);
+        }
+        if self.visible_widgets.stderr {
+            items.push(FocusWidget::Stderr);
+        }
+        if self.visible_widgets.filters {
+            items.push(FocusWidget::Sidebar);
+        }
+        items
+    }
 
-            (_, KeyCode::Char('v'))
-                if !self.search_dlg.visible
-                    && !self.script.visible
-                    && !self.field_sel.visible
-                    && !self.output.visible =>
-            {
-                if let Some(j) = self.table.focused_job() {
-                    self.output.show(j.job_id.clone());
-                }
-            }
+    fn cycle_focus(&mut self) {
+        let items = self.focusable_widgets();
+        if items.len() <= 1 {
+            return;
+        }
+        let current = items.iter().position(|&p| p == self.focus).unwrap_or(0);
+        let next = (current + 1) % items.len();
+        self.focus = items[next];
+    }
 
-            (KeyModifiers::SHIFT, KeyCode::Up) if self.output.visible => {
-                if self.table.retreat()
-                    && let Some(j) = self.table.focused_job()
-                {
-                    self.output.switch_job(j.job_id.clone());
-                }
-            }
-            (KeyModifiers::SHIFT, KeyCode::Down) if self.output.visible => {
-                if self.table.advance()
-                    && let Some(j) = self.table.focused_job()
-                {
-                    self.output.switch_job(j.job_id.clone());
-                }
-            }
-            _ if self.output.visible => {
-                self.output.handle_key(key);
-            }
+    fn cycle_focus_reverse(&mut self) {
+        let items = self.focusable_widgets();
+        if items.len() <= 1 {
+            return;
+        }
+        let current = items.iter().position(|&p| p == self.focus).unwrap_or(0);
+        let next = if current == 0 {
+            items.len() - 1
+        } else {
+            current - 1
+        };
+        self.focus = items[next];
+    }
 
-            _ if self.field_sel.visible => {
-                let action = self.field_sel.handle_key(key);
-                match action {
-                    FieldAction::Dismiss => self.field_sel.visible = false,
-                    FieldAction::Confirm => {
-                        self.visible_fields = self.field_sel.active.clone();
-                        self.sort_fields = self.field_sel.sort_list.clone();
-                        if let Err(e) = self.reload_jobs() {
-                            self.flash(format!("Failed to refresh: {}", e), 3);
-                        }
-                    }
-                    FieldAction::Save => {
-                        self.visible_fields = self.field_sel.active.clone();
-                        self.sort_fields = self.field_sel.sort_list.clone();
-                        match save_columns(&self.visible_fields, &self.sort_fields) {
-                            Ok(_) => self.flash("Column settings saved".into(), 3),
-                            Err(e) => self.flash(format!("Failed to save columns: {}", e), 3),
-                        }
-                    }
-                    FieldAction::Noop => {}
-                }
-            }
-
-            _ => {}
+    fn is_widget_visible(&self, widget: FocusWidget) -> bool {
+        match widget {
+            FocusWidget::Table => true,
+            FocusWidget::Script => self.visible_widgets.script,
+            FocusWidget::Stdout => self.visible_widgets.stdout,
+            FocusWidget::Stderr => self.visible_widgets.stderr,
+            FocusWidget::Sidebar => self.visible_widgets.filters,
         }
     }
 
     fn on_mouse(&mut self, _ev: MouseEvent) {}
 
     fn on_timer(&mut self) {
-        if !self.search_dlg.visible
-            && !self.script.visible
-            && !self.field_sel.visible
+        if !self.field_sel.visible
+            && !self.widget_sel.visible
             && self.refreshed_at.elapsed().as_secs() >= self.refresh_secs
             && let Err(e) = self.reload_jobs()
         {
             self.flash(format!("Auto-refresh failed: {}", e), 3);
         }
 
-        if self.output.visible {
-            self.output.poll_updates();
+        if self.visible_widgets.stdout {
+            self.stdout_widget.poll_updates();
+        }
+        if self.visible_widgets.stderr {
+            self.stderr_widget.poll_updates();
         }
     }
+
+    // ── Helpers ──────────────────────────────────────────────
 
     fn flash(&mut self, msg: String, secs: u64) {
         self.notice = msg;
         self.notice_expires = Some(Instant::now() + Duration::from_secs(secs));
-    }
-
-    fn _set_refresh_rate(&mut self, secs: u64) {
-        self.refresh_secs = secs;
-        self.flash(format!("Auto-refresh interval set to {}s", secs), 3);
     }
 
     fn apply_search(&mut self) -> Result<()> {
@@ -601,22 +683,6 @@ impl Dashboard {
         }
     }
 
-    fn any_overlay_open(&self) -> bool {
-        self.search_dlg.visible
-            || self.script.visible
-            || self.field_sel.visible
-            || self.output.visible
-            || self.confirming_cancel
-    }
-
-    fn close_all_overlays(&mut self) {
-        self.search_dlg.visible = false;
-        self.script.visible = false;
-        self.field_sel.visible = false;
-        self.output.hide();
-        self.confirming_cancel = false;
-    }
-
     fn rebuild_format(&mut self) {
         let fmt = self
             .visible_fields
@@ -630,8 +696,8 @@ impl Dashboard {
         if !self.sort_fields.is_empty() {
             for sf in &self.sort_fields {
                 let code = sf.field.format_code().trim_start_matches('%');
-                let asc = matches!(sf.direction, Ordering::Asc);
-                self.params.ordering.insert(code.to_string(), asc);
+                let asc = matches!(sf.direction, SortDirection::Asc);
+                self.params.ordering.push((code.to_string(), asc));
             }
 
             if let Some(first) = self.sort_fields.first() {
@@ -641,10 +707,10 @@ impl Dashboard {
                     .position(|f| std::mem::discriminant(f) == std::mem::discriminant(&first.field))
                     .unwrap_or(0);
                 self.table.primary_sort_col = idx;
-                self.table.sort_asc = matches!(first.direction, Ordering::Asc);
+                self.table.sort_asc = matches!(first.direction, SortDirection::Asc);
             }
         } else {
-            self.params.ordering.insert("i".to_string(), true);
+            self.params.ordering.push(("i".to_string(), true));
             self.table.primary_sort_col = 0;
             self.table.sort_asc = true;
         }

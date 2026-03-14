@@ -1,6 +1,8 @@
 pub mod chrome;
 pub mod fields;
+pub mod filter_tree;
 pub mod job_table;
-pub mod output_pane;
-pub mod script_pane;
-pub mod search;
+pub mod output_widget;
+pub mod script_widget;
+pub mod theme;
+pub mod widget_selector;

@@ -31,10 +31,10 @@ impl Default for InputConfig {
 
 pub struct InputLoop {
     pub rx: mpsc::Receiver<Signal>,
-    #[allow(dead_code)]
-    tx: mpsc::Sender<Signal>,
-    #[allow(dead_code)]
-    worker: thread::JoinHandle<()>,
+    /// Kept alive so the channel stays open; the worker holds a clone.
+    _tx: mpsc::Sender<Signal>,
+    /// Kept alive to prevent the worker thread from being detached.
+    _worker: thread::JoinHandle<()>,
 }
 
 impl InputLoop {
@@ -76,6 +76,10 @@ impl InputLoop {
             })
         };
 
-        Self { rx, tx, worker }
+        Self {
+            rx,
+            _tx: tx,
+            _worker: worker,
+        }
     }
 }

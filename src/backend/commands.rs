@@ -24,15 +24,45 @@ pub async fn run_cmd(program: &str, args: Vec<String>) -> Result<Output> {
     Ok(out)
 }
 
-pub async fn _run_squeue(args: Vec<String>) -> Result<String> {
-    let out = run_cmd("squeue", args).await?;
-    Ok(String::from_utf8_lossy(&out.stdout).into_owned())
+/// Parsed result of `scontrol show job <id> -o`.
+pub struct JobDetail {
+    pub stdout_file: Option<String>,
+    pub stderr_file: Option<String>,
+    pub command: Option<String>,
 }
 
-pub async fn _run_scontrol(job_id: &str) -> Result<String> {
-    let args = vec!["show".into(), "job".into(), job_id.into()];
-    let out = run_cmd("scontrol", args).await?;
-    Ok(String::from_utf8_lossy(&out.stdout).into_owned())
+/// Run `scontrol show job <id> -o` and parse the key=value output.
+pub fn scontrol_show_job(job_id: &str) -> Option<JobDetail> {
+    use std::process::Command as StdCommand;
+
+    let output = StdCommand::new("scontrol")
+        .args(["show", "job", job_id, "-o"])
+        .output()
+        .ok()?;
+
+    if !output.status.success() {
+        return None;
+    }
+
+    let raw = String::from_utf8_lossy(&output.stdout);
+    let kv = parse_scontrol_kv(&raw);
+
+    Some(JobDetail {
+        stdout_file: kv.get("StdOut").cloned(),
+        stderr_file: kv.get("StdErr").cloned(),
+        command: kv.get("Command").cloned(),
+    })
+}
+
+/// Parse scontrol's space-separated `Key=Value` output into a map.
+pub fn parse_scontrol_kv(text: &str) -> HashMap<String, String> {
+    let mut out = HashMap::new();
+    for token in text.split_whitespace() {
+        if let Some(eq) = token.find('=') {
+            out.insert(token[..eq].to_string(), token[eq + 1..].to_string());
+        }
+    }
+    out
 }
 
 pub async fn cancel_jobs(job_ids: Vec<String>) -> Result<()> {
@@ -54,15 +84,6 @@ pub async fn cancel_jobs(job_ids: Vec<String>) -> Result<()> {
         }
     }
 
-    Ok(())
-}
-
-pub async fn _update_job(job_id: &str, params: HashMap<String, String>) -> Result<()> {
-    let mut args = vec!["update".to_string(), format!("JobId={}", job_id)];
-    for (k, v) in params {
-        args.push(format!("{}={}", k, v));
-    }
-    let _ = run_cmd("scontrol", args).await?;
     Ok(())
 }
 

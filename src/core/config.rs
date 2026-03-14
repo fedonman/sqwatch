@@ -2,7 +2,8 @@ use serde::{Deserialize, Serialize};
 use std::{fs, path::PathBuf, str::FromStr};
 
 use crate::backend::{JobState, query::QueryParams};
-use crate::views::fields::{JobField, OrderedField, Ordering};
+use crate::views::fields::{JobField, OrderedField, SortDirection};
+use crate::views::widget_selector::VisibleWidgets;
 
 #[derive(Debug, Default, Serialize, Deserialize)]
 pub struct SavedFilters {
@@ -47,14 +48,18 @@ impl SavedFilters {
     }
 }
 
-fn config_path() -> PathBuf {
+fn sqwatch_config_dir() -> PathBuf {
     let base = std::env::var("XDG_CONFIG_HOME")
         .map(PathBuf::from)
         .unwrap_or_else(|_| {
             let home = std::env::var("HOME").unwrap_or_else(|_| ".".into());
             PathBuf::from(home).join(".config")
         });
-    base.join("sqwatch").join("filters.json")
+    base.join("sqwatch")
+}
+
+fn config_path() -> PathBuf {
+    sqwatch_config_dir().join("filters.json")
 }
 
 pub fn load_filters() -> Option<SavedFilters> {
@@ -99,8 +104,8 @@ impl SavedColumns {
                 .map(|of| SavedSort {
                     field: of.field.heading().to_string(),
                     direction: match of.direction {
-                        Ordering::Asc => "asc".to_string(),
-                        Ordering::Desc => "desc".to_string(),
+                        SortDirection::Asc => "asc".to_string(),
+                        SortDirection::Desc => "desc".to_string(),
                     },
                 })
                 .collect(),
@@ -123,8 +128,8 @@ impl SavedColumns {
             .filter_map(|s| {
                 let field = lookup(&s.field)?;
                 let direction = match s.direction.as_str() {
-                    "desc" => Ordering::Desc,
-                    _ => Ordering::Asc,
+                    "desc" => SortDirection::Desc,
+                    _ => SortDirection::Asc,
                 };
                 Some(OrderedField { field, direction })
             })
@@ -135,13 +140,7 @@ impl SavedColumns {
 }
 
 fn columns_path() -> PathBuf {
-    let base = std::env::var("XDG_CONFIG_HOME")
-        .map(PathBuf::from)
-        .unwrap_or_else(|_| {
-            let home = std::env::var("HOME").unwrap_or_else(|_| ".".into());
-            PathBuf::from(home).join(".config")
-        });
-    base.join("sqwatch").join("columns.json")
+    sqwatch_config_dir().join("columns.json")
 }
 
 pub fn load_columns() -> Option<(Vec<JobField>, Vec<OrderedField>)> {
@@ -157,6 +156,52 @@ pub fn save_columns(active: &[JobField], sort_list: &[OrderedField]) -> Result<(
         fs::create_dir_all(parent).map_err(|e| format!("Failed to create config dir: {}", e))?;
     }
     let saved = SavedColumns::from_fields(active, sort_list);
+    let json =
+        serde_json::to_string_pretty(&saved).map_err(|e| format!("Failed to serialize: {}", e))?;
+    fs::write(&path, json).map_err(|e| format!("Failed to write {}: {}", path.display(), e))
+}
+
+// --- Layout settings persistence ---
+
+#[derive(Debug, Default, Serialize, Deserialize)]
+struct SavedLayout {
+    #[serde(default)]
+    pub filters: bool,
+    #[serde(default)]
+    pub script: bool,
+    #[serde(default)]
+    pub stdout: bool,
+    #[serde(default)]
+    pub stderr: bool,
+}
+
+fn layout_path() -> PathBuf {
+    sqwatch_config_dir().join("layout.json")
+}
+
+pub fn load_layout() -> Option<VisibleWidgets> {
+    let path = layout_path();
+    let data = fs::read_to_string(path).ok()?;
+    let saved: SavedLayout = serde_json::from_str(&data).ok()?;
+    Some(VisibleWidgets {
+        filters: saved.filters,
+        script: saved.script,
+        stdout: saved.stdout,
+        stderr: saved.stderr,
+    })
+}
+
+pub fn save_layout(widgets: &VisibleWidgets) -> Result<(), String> {
+    let path = layout_path();
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent).map_err(|e| format!("Failed to create config dir: {}", e))?;
+    }
+    let saved = SavedLayout {
+        filters: widgets.filters,
+        script: widgets.script,
+        stdout: widgets.stdout,
+        stderr: widgets.stderr,
+    };
     let json =
         serde_json::to_string_pretty(&saved).map_err(|e| format!("Failed to serialize: {}", e))?;
     fs::write(&path, json).map_err(|e| format!("Failed to write {}: {}", path.display(), e))

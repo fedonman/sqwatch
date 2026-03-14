@@ -4,12 +4,17 @@ use ratatui::{
     layout::Rect,
     style::{Color, Modifier, Style},
     text::{Line, Span, Text},
-    widgets::{Block, Borders, Clear, Paragraph, Wrap},
+    widgets::{Block, BorderType, Borders, Paragraph, Wrap},
 };
-use std::{collections::HashMap, process::Command};
+use regex::Regex;
+use std::process::Command;
+use std::sync::LazyLock;
 
-pub struct ScriptPane {
-    pub visible: bool,
+use crate::backend::commands::scontrol_show_job;
+
+static ANSI_ESCAPE_RE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"\x1B\[([0-9;]*)m").unwrap());
+
+pub struct ScriptWidget {
     pub job_id: Option<String>,
     pub job_name: Option<String>,
     pub body: String,
@@ -18,10 +23,9 @@ pub struct ScriptPane {
     pub has_bat: bool,
 }
 
-impl ScriptPane {
+impl ScriptWidget {
     pub fn new() -> Self {
         Self {
-            visible: false,
             job_id: None,
             job_name: None,
             body: String::new(),
@@ -29,11 +33,6 @@ impl ScriptPane {
             path: None,
             has_bat: detect_bat(),
         }
-    }
-
-    pub fn show(&mut self, id: String, label: String) {
-        self.switch_job(id, label);
-        self.visible = true;
     }
 
     pub fn switch_job(&mut self, id: String, label: String) {
@@ -55,28 +54,49 @@ impl ScriptPane {
         }
     }
 
-    pub fn render(&self, frame: &mut Frame, area: Rect) {
-        if !self.visible {
+    pub fn ensure_job(&mut self, job_id: &str, job_name: &str) {
+        if self.job_id.as_deref() == Some(job_id) {
+            return;
+        }
+        self.switch_job(job_id.to_string(), job_name.to_string());
+    }
+
+    pub fn clear_job(&mut self) {
+        self.job_id = None;
+        self.job_name = None;
+        self.body.clear();
+        self.scroll_pos = 0;
+    }
+
+    pub fn render_inline(&self, frame: &mut Frame, area: Rect, focused: bool) {
+        let border_color = if focused {
+            Color::Magenta
+        } else {
+            Color::Rgb(80, 80, 110)
+        };
+
+        let title = match (&self.job_id, &self.job_name) {
+            (Some(id), Some(name)) => format!(" Script: {}/{} ", name, id),
+            _ => " Script ".to_string(),
+        };
+
+        let block = Block::default()
+            .title(title)
+            .borders(Borders::ALL)
+            .border_type(BorderType::Rounded)
+            .border_style(Style::default().fg(border_color));
+
+        if self.job_id.is_none() {
+            let placeholder = Paragraph::new("Select a job to view its script")
+                .style(Style::default().fg(Color::DarkGray))
+                .block(block);
+            frame.render_widget(placeholder, area);
             return;
         }
 
-        frame.render_widget(Clear, area);
-
-        let id_str = self.job_id.as_deref().unwrap_or("null");
-        let label_str = self.job_name.as_deref().unwrap_or("null");
-
-        let title = format!("Job Script for {}/{}", label_str, id_str);
-        let keys =
-            " [\u{2191}/\u{2193}] Scroll | [Shift+\u{2191}/\u{2193}] Toggle Job | [Esc] Close ";
-
         let display = self.build_display_text();
         let widget = Paragraph::new(display)
-            .block(
-                Block::default()
-                    .title(format!("{}{}", title, keys))
-                    .borders(Borders::ALL)
-                    .border_style(Style::default().fg(Color::Cyan)),
-            )
+            .block(block)
             .wrap(Wrap { trim: false })
             .scroll((self.scroll_pos as u16, 0));
 
@@ -117,32 +137,17 @@ impl ScriptPane {
     }
 
     fn load_content(&mut self) {
-        let id = match &self.job_id {
-            Some(id) => id.clone(),
-            None => {
-                self.body.clear();
-                return;
-            }
-        };
-
-        let result = Command::new("scontrol")
-            .args(["show", "job", &id, "-o"])
-            .output();
-
-        let Ok(output) = result else {
-            self.body = "Failed to execute scontrol command".into();
+        let Some(id) = &self.job_id else {
+            self.body.clear();
             return;
         };
 
-        if !output.status.success() {
-            self.body = "Error retrieving job information".into();
+        let Some(detail) = scontrol_show_job(id) else {
+            self.body = "Failed to retrieve job information".into();
             return;
-        }
+        };
 
-        let raw = String::from_utf8_lossy(&output.stdout);
-        let fields = extract_kv_pairs(&raw);
-
-        let Some(script_path) = fields.get("Command") else {
+        let Some(script_path) = detail.command else {
             self.body = "No script found for this job. Maybe it's wrapped".into();
             return;
         };
@@ -150,14 +155,14 @@ impl ScriptPane {
         self.path = Some(script_path.clone());
 
         if self.has_bat
-            && let Some(highlighted) = run_bat(script_path)
+            && let Some(highlighted) = run_bat(&script_path)
         {
             self.body = highlighted;
             return;
         }
 
         self.has_bat = false;
-        match std::fs::read_to_string(script_path) {
+        match std::fs::read_to_string(&script_path) {
             Ok(content) => self.body = content,
             Err(_) => {
                 self.body = format!("Failed to read script from path: {}", script_path);
@@ -183,9 +188,6 @@ fn run_bat(path: &str) -> Option<String> {
 }
 
 fn ansi_to_spans(text: &str) -> Vec<Line<'_>> {
-    use regex::Regex;
-
-    let escape_re = Regex::new(r"\x1B\[([0-9;]*)m").unwrap();
     let mut output = Vec::new();
     let mut style = Style::default();
 
@@ -193,7 +195,7 @@ fn ansi_to_spans(text: &str) -> Vec<Line<'_>> {
         let mut spans = Vec::new();
         let mut cursor = 0;
 
-        for cap in escape_re.captures_iter(line) {
+        for cap in ANSI_ESCAPE_RE.captures_iter(line) {
             let whole = cap.get(0).unwrap();
             let codes = cap.get(1).unwrap();
 
@@ -275,18 +277,6 @@ fn apply_ansi_codes(codes_str: &str, mut style: Style) -> Style {
     }
 
     style
-}
-
-fn extract_kv_pairs(text: &str) -> HashMap<String, String> {
-    let mut map = HashMap::new();
-    for token in text.split_whitespace() {
-        if let Some(eq_pos) = token.find('=') {
-            let k = &token[..eq_pos];
-            let v = &token[eq_pos + 1..];
-            map.insert(k.to_string(), v.to_string());
-        }
-    }
-    map
 }
 
 fn detect_bat() -> bool {

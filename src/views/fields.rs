@@ -4,8 +4,10 @@ use ratatui::{
     layout::{Constraint, Direction, Layout, Rect},
     style::{Color, Modifier, Style},
     text::Line,
-    widgets::{Block, Borders, Clear, List, ListItem, ListState, Paragraph},
+    widgets::{Block, BorderType, Borders, Clear, List, ListItem, ListState, Paragraph},
 };
+
+use super::theme::{ACCENT, DIM_BORDER, POPUP_BG};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum JobField {
@@ -139,23 +141,23 @@ impl JobField {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Ordering {
+pub enum SortDirection {
     Asc,
     Desc,
 }
 
-impl Ordering {
+impl SortDirection {
     pub fn flip(&self) -> Self {
         match self {
-            Ordering::Asc => Ordering::Desc,
-            Ordering::Desc => Ordering::Asc,
+            SortDirection::Asc => SortDirection::Desc,
+            SortDirection::Desc => SortDirection::Asc,
         }
     }
 
     pub fn arrow(&self) -> &'static str {
         match self {
-            Ordering::Asc => "\u{2191}",
-            Ordering::Desc => "\u{2193}",
+            SortDirection::Asc => "\u{25b2}",
+            SortDirection::Desc => "\u{25bc}",
         }
     }
 }
@@ -163,7 +165,7 @@ impl Ordering {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct OrderedField {
     pub field: JobField,
-    pub direction: Ordering,
+    pub direction: SortDirection,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -220,9 +222,11 @@ impl FieldSelector {
         frame.render_widget(Clear, area);
 
         let outer = Block::default()
-            .title(Line::from("Column Management").centered())
-            .borders(Borders::NONE)
-            .style(Style::default().bg(Color::Black));
+            .title(Line::from(" \u{25c6} Column Management \u{25c6} ").centered())
+            .borders(Borders::ALL)
+            .border_type(BorderType::Rounded)
+            .border_style(Style::default().fg(ACCENT))
+            .style(Style::default().bg(POPUP_BG));
         frame.render_widget(outer.clone(), area);
 
         let sections = Layout::default()
@@ -249,21 +253,26 @@ impl FieldSelector {
         let pool_block = Block::default()
             .title("Available Columns")
             .borders(Borders::ALL)
-            .style(if self.focus == FieldFocus::Pool {
-                Style::default().fg(Color::Cyan)
+            .border_type(BorderType::Rounded)
+            .border_style(Style::default().fg(if self.focus == FieldFocus::Pool {
+                ACCENT
             } else {
-                Style::default()
-            });
+                DIM_BORDER
+            }));
 
         let pool_items: Vec<ListItem> = self
             .pool
             .iter()
-            .map(|f| ListItem::new(f.heading()))
+            .map(|f| {
+                ListItem::new(f.heading()).style(Style::default().fg(Color::Rgb(170, 170, 190)))
+            })
             .collect();
 
-        let pool_list = List::new(pool_items)
-            .block(pool_block)
-            .highlight_style(Style::default().add_modifier(Modifier::BOLD));
+        let pool_list = List::new(pool_items).block(pool_block).highlight_style(
+            Style::default()
+                .add_modifier(Modifier::BOLD)
+                .fg(Color::White),
+        );
 
         frame.render_stateful_widget(pool_list, cols[0], &mut self.pool_state);
 
@@ -271,21 +280,26 @@ impl FieldSelector {
         let active_block = Block::default()
             .title("Selected Columns")
             .borders(Borders::ALL)
-            .style(if self.focus == FieldFocus::Active {
-                Style::default().fg(Color::Cyan)
+            .border_type(BorderType::Rounded)
+            .border_style(Style::default().fg(if self.focus == FieldFocus::Active {
+                ACCENT
             } else {
-                Style::default()
-            });
+                DIM_BORDER
+            }));
 
         let active_items: Vec<ListItem> = self
             .active
             .iter()
-            .map(|f| ListItem::new(f.heading()))
+            .map(|f| {
+                ListItem::new(f.heading()).style(Style::default().fg(Color::Rgb(170, 170, 190)))
+            })
             .collect();
 
-        let active_list = List::new(active_items)
-            .block(active_block)
-            .highlight_style(Style::default().add_modifier(Modifier::BOLD));
+        let active_list = List::new(active_items).block(active_block).highlight_style(
+            Style::default()
+                .add_modifier(Modifier::BOLD)
+                .fg(Color::White),
+        );
 
         frame.render_stateful_widget(active_list, cols[1], &mut self.active_state);
 
@@ -293,21 +307,27 @@ impl FieldSelector {
         let sort_block = Block::default()
             .title("Sort Order")
             .borders(Borders::ALL)
-            .style(if self.focus == FieldFocus::SortList {
-                Style::default().fg(Color::Cyan)
+            .border_type(BorderType::Rounded)
+            .border_style(Style::default().fg(if self.focus == FieldFocus::SortList {
+                ACCENT
             } else {
-                Style::default()
-            });
+                DIM_BORDER
+            }));
 
         let sort_items: Vec<ListItem> = self
             .sort_list
             .iter()
-            .map(|of| ListItem::new(format!("{} {}", of.field.heading(), of.direction.arrow())))
+            .map(|of| {
+                ListItem::new(format!("{} {}", of.field.heading(), of.direction.arrow()))
+                    .style(Style::default().fg(Color::Rgb(170, 170, 190)))
+            })
             .collect();
 
-        let sort_list_widget = List::new(sort_items)
-            .block(sort_block)
-            .highlight_style(Style::default().add_modifier(Modifier::BOLD));
+        let sort_list_widget = List::new(sort_items).block(sort_block).highlight_style(
+            Style::default()
+                .add_modifier(Modifier::BOLD)
+                .fg(Color::White),
+        );
 
         frame.render_stateful_widget(sort_list_widget, cols[2], &mut self.sort_state);
     }
@@ -327,8 +347,13 @@ impl FieldSelector {
 
         let full = format!("{} | r: Reset | Ctrl+S: Save | Esc: Close", hint);
         let widget = Paragraph::new(full)
-            .style(Style::default().fg(Color::Gray))
-            .block(Block::default().borders(Borders::ALL));
+            .style(Style::default().fg(Color::DarkGray))
+            .block(
+                Block::default()
+                    .borders(Borders::ALL)
+                    .border_type(BorderType::Rounded)
+                    .border_style(Style::default().fg(DIM_BORDER)),
+            );
         frame.render_widget(widget, area);
     }
 
@@ -467,7 +492,7 @@ impl FieldSelector {
                     if !already_sorting {
                         self.sort_list.push(OrderedField {
                             field,
-                            direction: Ordering::Asc,
+                            direction: SortDirection::Asc,
                         });
                         self.sort_state.select(Some(self.sort_list.len() - 1));
                     }
@@ -566,7 +591,7 @@ impl FieldSelector {
         self.active = JobField::defaults();
         self.sort_list = vec![OrderedField {
             field: JobField::Id,
-            direction: Ordering::Asc,
+            direction: SortDirection::Asc,
         }];
 
         let mut pool = JobField::enumerate();
