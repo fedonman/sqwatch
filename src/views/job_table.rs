@@ -256,7 +256,7 @@ impl JobTable {
                     .border_style(Style::default().fg(if focused {
                         Color::Magenta
                     } else {
-                        Color::Rgb(60, 60, 80)
+                        Color::Rgb(80, 80, 110)
                     })),
             )
             .row_highlight_style(

@@ -264,7 +264,7 @@ impl FieldSelector {
             .pool
             .iter()
             .map(|f| {
-                ListItem::new(f.heading()).style(Style::default().fg(Color::Rgb(140, 140, 140)))
+                ListItem::new(f.heading()).style(Style::default().fg(Color::Rgb(170, 170, 190)))
             })
             .collect();
 
@@ -291,7 +291,7 @@ impl FieldSelector {
             .active
             .iter()
             .map(|f| {
-                ListItem::new(f.heading()).style(Style::default().fg(Color::Rgb(140, 140, 140)))
+                ListItem::new(f.heading()).style(Style::default().fg(Color::Rgb(170, 170, 190)))
             })
             .collect();
 
@@ -319,7 +319,7 @@ impl FieldSelector {
             .iter()
             .map(|of| {
                 ListItem::new(format!("{} {}", of.field.heading(), of.direction.arrow()))
-                    .style(Style::default().fg(Color::Rgb(140, 140, 140)))
+                    .style(Style::default().fg(Color::Rgb(170, 170, 190)))
             })
             .collect();
 

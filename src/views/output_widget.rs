@@ -157,7 +157,7 @@ impl OutputWidget {
         let border_color = if focused {
             Color::Magenta
         } else {
-            Color::Rgb(50, 50, 70)
+            Color::Rgb(80, 80, 110)
         };
 
         let title = match &self.job_id {

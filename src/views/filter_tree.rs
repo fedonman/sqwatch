@@ -12,8 +12,8 @@ use crate::backend::{JobState, query::QueryParams};
 
 use super::theme::{ACCENT, CHECKED_COLOR, DIM_BORDER, UNCHECKED_COLOR};
 
-const HEADER_COLOR: Color = Color::Rgb(180, 140, 220);
-const INPUT_COLOR: Color = Color::Rgb(200, 180, 100);
+const HEADER_COLOR: Color = Color::Rgb(200, 170, 240);
+const INPUT_COLOR: Color = Color::Rgb(220, 200, 130);
 const INVALID_COLOR: Color = Color::Rgb(230, 70, 70);
 
 /// Width of the sidebar when open.

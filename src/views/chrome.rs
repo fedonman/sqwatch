@@ -116,7 +116,7 @@ pub fn render_titlebar(frame: &mut Frame, area: Rect, username: &str, flash: Opt
         Span::styled("  sqwatch ", Style::default().fg(ACCENT).bg(BAR_BG).bold()),
         Span::styled(
             "- SLURM Queue Watcher ",
-            Style::default().fg(Color::Rgb(140, 140, 140)).bg(BAR_BG),
+            Style::default().fg(Color::Rgb(170, 170, 190)).bg(BAR_BG),
         ),
     ];
 
@@ -205,7 +205,7 @@ pub fn render_statusbar(
         spans.push(Span::styled(*k, Style::default().fg(ACCENT).bg(BAR_BG)));
         spans.push(Span::styled(
             format!(" {} ", desc),
-            Style::default().fg(Color::Rgb(140, 140, 140)).bg(BAR_BG),
+            Style::default().fg(Color::Rgb(170, 170, 190)).bg(BAR_BG),
         ));
     }
 
