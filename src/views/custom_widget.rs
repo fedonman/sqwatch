@@ -29,6 +29,7 @@ pub struct CustomOutputWidget {
     pub work_dir: Option<String>,
     pub content: String,
     pub scroll_pos: usize,
+    max_scroll: usize,
     monitor: Option<LiveFileMonitor>,
     data_rx: Option<Receiver<Result<String, MonitorError>>>,
     fstate: FileState,
@@ -44,6 +45,7 @@ impl CustomOutputWidget {
             work_dir: None,
             content: String::new(),
             scroll_pos: 0,
+            max_scroll: 0,
             monitor: None,
             data_rx: None,
             fstate: FileState::Missing,
@@ -132,8 +134,7 @@ impl CustomOutputWidget {
     }
 
     pub fn scroll_down(&mut self) {
-        let n = self.content.lines().count();
-        if self.scroll_pos < n.saturating_sub(1) {
+        if self.scroll_pos < self.max_scroll {
             self.scroll_pos += 1;
         }
     }
@@ -143,11 +144,10 @@ impl CustomOutputWidget {
     }
 
     pub fn page_down(&mut self) {
-        let n = self.content.lines().count();
-        self.scroll_pos = (self.scroll_pos + 10).min(n.saturating_sub(1));
+        self.scroll_pos = (self.scroll_pos + 10).min(self.max_scroll);
     }
 
-    pub fn render_inline(&self, frame: &mut Frame, area: Rect, focused: bool) {
+    pub fn render_inline(&mut self, frame: &mut Frame, area: Rect, focused: bool) {
         let border_color = if focused {
             CUSTOM_ACCENT
         } else {
@@ -187,6 +187,11 @@ impl CustomOutputWidget {
             .block(block)
             .wrap(Wrap { trim: false })
             .scroll((self.scroll_pos as u16, 0));
+
+        let inner_width = area.width.saturating_sub(2);
+        let inner_height = area.height.saturating_sub(2) as usize;
+        let total_lines = widget.line_count(inner_width);
+        self.max_scroll = total_lines.saturating_sub(inner_height);
 
         frame.render_widget(widget, area);
     }

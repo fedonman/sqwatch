@@ -300,16 +300,17 @@ impl Dashboard {
                     .render_inline(frame, area, self.focus == FocusWidget::Script);
             }
             WidgetKind::Stdout => {
-                self.stdout_widget
-                    .render_inline(frame, area, self.focus == FocusWidget::Stdout);
+                let focused = self.focus == FocusWidget::Stdout;
+                self.stdout_widget.render_inline(frame, area, focused);
             }
             WidgetKind::Stderr => {
-                self.stderr_widget
-                    .render_inline(frame, area, self.focus == FocusWidget::Stderr);
+                let focused = self.focus == FocusWidget::Stderr;
+                self.stderr_widget.render_inline(frame, area, focused);
             }
             WidgetKind::Custom(i) => {
-                if let Some(cw) = self.custom_widgets.get(*i) {
-                    cw.render_inline(frame, area, self.focus == FocusWidget::Custom(*i));
+                let focused = self.focus == FocusWidget::Custom(*i);
+                if let Some(cw) = self.custom_widgets.get_mut(*i) {
+                    cw.render_inline(frame, area, focused);
                 }
             }
             WidgetKind::Filters => {}
