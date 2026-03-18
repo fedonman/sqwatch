@@ -105,6 +105,12 @@ impl CustomOutputWidget {
 
     pub fn ensure_job(&mut self, job_id: &str, work_dir: Option<&str>) {
         if self.job_id.as_deref() == Some(job_id) {
+            // Update work_dir if it became available after initial setup
+            // (e.g., %Z wasn't in the format string when the widget was first synced)
+            if work_dir.is_some() && self.work_dir.as_deref() != work_dir {
+                self.work_dir = work_dir.map(String::from);
+                self.refresh_watched_file();
+            }
             return;
         }
         self.switch_job(job_id.to_string(), work_dir);
