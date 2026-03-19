@@ -88,13 +88,12 @@ impl ScriptWidget {
     }
 
     pub fn poll_updates(&mut self) {
-        if let Some(rx) = &self.content_rx {
-            if let Ok(text) = rx.try_recv() {
+        if let Some(rx) = &self.content_rx
+            && let Ok(text) = rx.try_recv() {
                 self.body = text;
                 self.loading = false;
                 self.content_rx = None;
             }
-        }
     }
 
     pub fn scroll_up(&mut self) {
