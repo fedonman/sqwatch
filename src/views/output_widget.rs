@@ -42,6 +42,7 @@ pub struct OutputWidget {
     pub scroll_pos: usize,
     pub stdout_file: Option<String>,
     pub stderr_file: Option<String>,
+    max_scroll: usize,
     monitor: Option<LiveFileMonitor>,
     data_rx: Option<Receiver<Result<String, MonitorError>>>,
     fstate: FileState,
@@ -56,6 +57,7 @@ impl OutputWidget {
             scroll_pos: 0,
             stdout_file: None,
             stderr_file: None,
+            max_scroll: 0,
             monitor: None,
             data_rx: None,
             fstate: FileState::Missing,
@@ -121,8 +123,7 @@ impl OutputWidget {
     }
 
     pub fn scroll_down(&mut self) {
-        let n = self.content.lines().count();
-        if self.scroll_pos < n.saturating_sub(1) {
+        if self.scroll_pos < self.max_scroll {
             self.scroll_pos += 1;
         }
     }
@@ -132,8 +133,7 @@ impl OutputWidget {
     }
 
     pub fn page_down(&mut self) {
-        let n = self.content.lines().count();
-        self.scroll_pos = (self.scroll_pos + 10).min(n.saturating_sub(1));
+        self.scroll_pos = (self.scroll_pos + 10).min(self.max_scroll);
     }
 
     pub fn ensure_job(&mut self, job_id: &str) {
@@ -153,7 +153,7 @@ impl OutputWidget {
         }
     }
 
-    pub fn render_inline(&self, frame: &mut Frame, area: Rect, focused: bool) {
+    pub fn render_inline(&mut self, frame: &mut Frame, area: Rect, focused: bool) {
         let border_color = if focused {
             Color::Magenta
         } else {
@@ -193,6 +193,11 @@ impl OutputWidget {
             .block(block)
             .wrap(Wrap { trim: false })
             .scroll((self.scroll_pos as u16, 0));
+
+        let inner_width = area.width.saturating_sub(2);
+        let inner_height = area.height.saturating_sub(2) as usize;
+        let total_lines = widget.line_count(inner_width);
+        self.max_scroll = total_lines.saturating_sub(inner_height);
 
         frame.render_widget(widget, area);
     }

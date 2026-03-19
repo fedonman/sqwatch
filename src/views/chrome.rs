@@ -9,15 +9,14 @@ use ratatui::{
 use crate::dashboard::FocusWidget;
 use crate::views::filter_tree::SIDEBAR_WIDTH;
 use crate::views::theme::{ACCENT, BAR_BG, FLASH_COLOR};
-use crate::views::widget_selector::VisibleWidgets;
+use crate::views::widget_selector::{VisibleWidgets, WidgetKind};
 
 pub struct FrameLayout {
     pub titlebar: Rect,
     pub sidebar: Option<Rect>,
     pub table: Rect,
-    pub script: Option<Rect>,
-    pub stdout: Option<Rect>,
-    pub stderr: Option<Rect>,
+    pub right_widgets: Vec<(WidgetKind, Rect)>,
+    pub bottom_widgets: Vec<(WidgetKind, Rect)>,
     pub statusbar: Rect,
 }
 
@@ -46,52 +45,90 @@ pub fn build_frame(frame: &mut Frame, widgets: &VisibleWidgets) -> FrameLayout {
         (None, content)
     };
 
-    // Split remaining into table and right area (50/50) if any right widgets exist
-    let right_count = widgets.right_widget_count();
-    let (table_area, right_area) = if right_count > 0 {
-        let cols = Layout::default()
-            .direction(Direction::Horizontal)
-            .constraints([Constraint::Percentage(50), Constraint::Percentage(50)])
-            .split(remaining);
-        (cols[0], Some(cols[1]))
+    let visible_right = widgets.visible_right_widgets();
+    let total_right = visible_right.len();
+
+    if total_right == 0 {
+        return FrameLayout {
+            titlebar,
+            sidebar,
+            table: remaining,
+            right_widgets: Vec::new(),
+            bottom_widgets: Vec::new(),
+            statusbar,
+        };
+    }
+
+    // Split into panel widgets (right side, max 4) and overflow (under table)
+    let (panel_kinds, overflow_kinds) = if total_right <= 4 {
+        (visible_right.clone(), Vec::new())
     } else {
-        (remaining, None)
+        (visible_right[..4].to_vec(), visible_right[4..].to_vec())
     };
 
-    // Split right area vertically among visible right widgets
-    let (mut script_rect, mut stdout_rect, mut stderr_rect) = (None, None, None);
+    let panel_count = panel_kinds.len();
 
-    if let Some(right) = right_area {
-        let constraints: Vec<Constraint> = (0..right_count)
-            .map(|_| Constraint::Ratio(1, right_count as u32))
-            .collect();
+    // Split remaining 50/50 into left column (table) and right column (widget panel)
+    let cols = Layout::default()
+        .direction(Direction::Horizontal)
+        .constraints([Constraint::Percentage(50), Constraint::Percentage(50)])
+        .split(remaining);
+    let (left_col, right_col) = (cols[0], cols[1]);
 
-        let parts = Layout::default()
-            .direction(Direction::Vertical)
-            .constraints(constraints)
-            .split(right);
+    // Split right column equally among panel widgets
+    let right_constraints: Vec<Constraint> = (0..panel_count)
+        .map(|_| Constraint::Ratio(1, panel_count as u32))
+        .collect();
+    let right_parts = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints(right_constraints)
+        .split(right_col);
 
-        let mut idx = 0;
-        if widgets.script {
-            script_rect = Some(parts[idx]);
-            idx += 1;
-        }
-        if widgets.stdout {
-            stdout_rect = Some(parts[idx]);
-            idx += 1;
-        }
-        if widgets.stderr {
-            stderr_rect = Some(parts[idx]);
-        }
+    let right_widgets: Vec<(WidgetKind, Rect)> = panel_kinds
+        .into_iter()
+        .zip(right_parts.iter().copied())
+        .collect();
+
+    // No overflow: table uses the whole left column
+    if overflow_kinds.is_empty() {
+        return FrameLayout {
+            titlebar,
+            sidebar,
+            table: left_col,
+            right_widgets,
+            bottom_widgets: Vec::new(),
+            statusbar,
+        };
     }
+
+    // Overflow: split left column into table (top) + bottom zone
+    let bottom_height = right_parts.iter().map(|r| r.height).min().unwrap_or(3);
+    let left_split = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([Constraint::Min(5), Constraint::Length(bottom_height)])
+        .split(left_col);
+    let table_rect = left_split[0];
+    let bottom_zone = left_split[1];
+
+    let bottom_widgets = if overflow_kinds.len() == 1 {
+        vec![(overflow_kinds[0].clone(), bottom_zone)]
+    } else {
+        let halves = Layout::default()
+            .direction(Direction::Horizontal)
+            .constraints([Constraint::Percentage(50), Constraint::Percentage(50)])
+            .split(bottom_zone);
+        overflow_kinds
+            .into_iter()
+            .zip(halves.iter().copied())
+            .collect()
+    };
 
     FrameLayout {
         titlebar,
         sidebar,
-        table: table_area,
-        script: script_rect,
-        stdout: stdout_rect,
-        stderr: stderr_rect,
+        table: table_rect,
+        right_widgets,
+        bottom_widgets,
         statusbar,
     }
 }
@@ -157,7 +194,7 @@ pub fn render_statusbar(
     frame: &mut Frame,
     area: Rect,
     counts: (usize, usize, usize),
-    focus: FocusWidget,
+    focus: &FocusWidget,
 ) {
     let bar_style = Style::default().bg(BAR_BG);
 
@@ -194,7 +231,7 @@ pub fn render_statusbar(
             bindings.push(("r", "Reset"));
             bindings.push(("Ctrl+S", "Save"));
         }
-        FocusWidget::Stdout | FocusWidget::Stderr => {
+        FocusWidget::Stdout | FocusWidget::Stderr | FocusWidget::Custom(_) => {
             bindings.push(("PgUp/Dn", "Scroll"));
         }
         FocusWidget::Script => {}

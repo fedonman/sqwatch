@@ -3,7 +3,7 @@ use std::{fs, path::PathBuf, str::FromStr};
 
 use crate::backend::{JobState, query::QueryParams};
 use crate::views::fields::{JobField, OrderedField, SortDirection};
-use crate::views::widget_selector::VisibleWidgets;
+use crate::views::widget_selector::{CustomWidgetDef, VisibleWidgets};
 
 #[derive(Debug, Default, Serialize, Deserialize)]
 pub struct SavedFilters {
@@ -173,6 +173,8 @@ struct SavedLayout {
     pub stdout: bool,
     #[serde(default)]
     pub stderr: bool,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub custom_widgets: Vec<CustomWidgetDef>,
 }
 
 fn layout_path() -> PathBuf {
@@ -188,6 +190,7 @@ pub fn load_layout() -> Option<VisibleWidgets> {
         script: saved.script,
         stdout: saved.stdout,
         stderr: saved.stderr,
+        custom: saved.custom_widgets,
     })
 }
 
@@ -201,6 +204,7 @@ pub fn save_layout(widgets: &VisibleWidgets) -> Result<(), String> {
         script: widgets.script,
         stdout: widgets.stdout,
         stderr: widgets.stderr,
+        custom_widgets: widgets.custom.clone(),
     };
     let json =
         serde_json::to_string_pretty(&saved).map_err(|e| format!("Failed to serialize: {}", e))?;

@@ -1,4 +1,5 @@
 pub mod chrome;
+pub mod custom_widget;
 pub mod fields;
 pub mod filter_tree;
 pub mod job_table;
