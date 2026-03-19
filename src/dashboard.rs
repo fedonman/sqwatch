@@ -776,9 +776,7 @@ impl Dashboard {
             .collect();
 
         // Ensure %Z (WorkDir) is present when custom widgets need it
-        if self.visible_widgets.custom.iter().any(|c| c.visible)
-            && !codes.contains(&"%Z")
-        {
+        if self.visible_widgets.custom.iter().any(|c| c.visible) && !codes.contains(&"%Z") {
             codes.push("%Z");
         }
 

@@ -181,11 +181,12 @@ impl CustomOutputWidget {
         }
 
         let display_text = match self.fstate {
-            FileState::Missing => format!(
-                "File '{}' not found in job work directory",
-                self.filename
-            ),
-            _ if self.content.is_empty() => format!("Waiting for content from '{}'...", self.filename),
+            FileState::Missing => {
+                format!("File '{}' not found in job work directory", self.filename)
+            }
+            _ if self.content.is_empty() => {
+                format!("Waiting for content from '{}'...", self.filename)
+            }
             _ => self.display_content.clone(),
         };
 
@@ -270,13 +271,11 @@ fn expand_embedded_strings(value: &mut JsonValue) {
             if !s.contains('\n') {
                 return;
             }
-            if let Ok(parsed) = serde_yml::from_str::<serde_yml::Value>(s) {
-                if parsed.is_mapping() || parsed.is_sequence() {
-                    if let Ok(json_val) = serde_json::to_value(&parsed) {
+            if let Ok(parsed) = serde_yml::from_str::<serde_yml::Value>(s)
+                && (parsed.is_mapping() || parsed.is_sequence())
+                    && let Ok(json_val) = serde_json::to_value(&parsed) {
                         *value = json_val;
                     }
-                }
-            }
         }
         JsonValue::Array(arr) => {
             for item in arr {

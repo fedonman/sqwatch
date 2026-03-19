@@ -36,7 +36,6 @@ impl WidgetKind {
                 .unwrap_or("Custom"),
         }
     }
-
 }
 
 const BUILTIN_ORDER: [WidgetKind; 4] = [
@@ -379,8 +378,7 @@ impl WidgetSelector {
 
         lines.push(Line::raw(""));
 
-        let hint =
-            " \u{2191}\u{2193}: Navigate | Enter: Toggle | a: Add | d: Delete | Ctrl+S: Save | Esc: Close";
+        let hint = " \u{2191}\u{2193}: Navigate | Enter: Toggle | a: Add | d: Delete | Ctrl+S: Save | Esc: Close";
         lines.push(Line::from(Span::styled(
             hint,
             Style::default().fg(Color::DarkGray),
@@ -403,7 +401,9 @@ impl WidgetSelector {
 
         // Title field
         let title_label_style = if self.add_phase == AddPhase::Title {
-            Style::default().fg(Color::White).add_modifier(Modifier::BOLD)
+            Style::default()
+                .fg(Color::White)
+                .add_modifier(Modifier::BOLD)
         } else {
             Style::default().fg(UNCHECKED_COLOR)
         };
@@ -421,7 +421,9 @@ impl WidgetSelector {
 
         // Filename field
         let file_label_style = if self.add_phase == AddPhase::Filename {
-            Style::default().fg(Color::White).add_modifier(Modifier::BOLD)
+            Style::default()
+                .fg(Color::White)
+                .add_modifier(Modifier::BOLD)
         } else {
             Style::default().fg(UNCHECKED_COLOR)
         };
