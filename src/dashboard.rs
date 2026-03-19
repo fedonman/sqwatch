@@ -395,7 +395,6 @@ impl Dashboard {
             let id = job.job_id.clone();
             let name = job.name.clone();
             let work_dir = job.work_dir.clone();
-
             self.script.ensure_job(&id, &name);
             self.stdout_widget.ensure_job(&id);
             self.stderr_widget.ensure_job(&id);
