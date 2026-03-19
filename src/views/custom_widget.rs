@@ -252,10 +252,10 @@ fn try_format_json(raw: &str) -> Option<String> {
 
 /// Parses YAML and re-serialises it cleanly.
 fn try_format_yaml(raw: &str) -> Option<String> {
-    let value: serde_yml::Value = serde_yml::from_str(raw).ok()?;
+    let value: serde_norway::Value = serde_norway::from_str(raw).ok()?;
     // Only format if the top-level value is actually structured data.
     if value.is_mapping() || value.is_sequence() {
-        serde_yml::to_string(&value).ok()
+        serde_norway::to_string(&value).ok()
     } else {
         None
     }
@@ -271,7 +271,7 @@ fn expand_embedded_strings(value: &mut JsonValue) {
             if !s.contains('\n') {
                 return;
             }
-            if let Ok(parsed) = serde_yml::from_str::<serde_yml::Value>(s)
+            if let Ok(parsed) = serde_norway::from_str::<serde_norway::Value>(s)
                 && (parsed.is_mapping() || parsed.is_sequence())
                 && let Ok(json_val) = serde_json::to_value(&parsed)
             {
