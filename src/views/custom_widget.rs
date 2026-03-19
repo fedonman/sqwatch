@@ -6,6 +6,7 @@ use ratatui::{
     style::{Color, Style},
     widgets::{Block, BorderType, Borders, Paragraph, Wrap},
 };
+use serde_json::Value as JsonValue;
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 
@@ -33,6 +34,7 @@ pub struct CustomOutputWidget {
     monitor: Option<LiveFileMonitor>,
     data_rx: Option<Receiver<Result<String, MonitorError>>>,
     fstate: FileState,
+    display_content: String,
 }
 
 impl CustomOutputWidget {
@@ -49,6 +51,7 @@ impl CustomOutputWidget {
             monitor: None,
             data_rx: None,
             fstate: FileState::Missing,
+            display_content: String::new(),
         }
     }
 
@@ -96,9 +99,13 @@ impl CustomOutputWidget {
 
         while let Ok(result) = rx.try_recv() {
             match result {
-                Ok(text) => self.content = text,
+                Ok(text) => {
+                    self.content = text;
+                    self.display_content = format_content(&self.content, &self.filename);
+                }
                 Err(e) => {
                     self.content = format!("Error watching file: {}", e);
+                    self.display_content = self.content.clone();
                     self.fstate = FileState::Failed;
                 }
             }
@@ -179,7 +186,7 @@ impl CustomOutputWidget {
                 self.filename
             ),
             _ if self.content.is_empty() => format!("Waiting for content from '{}'...", self.filename),
-            _ => self.content.clone(),
+            _ => self.display_content.clone(),
         };
 
         let widget = Paragraph::new(display_text)
@@ -206,5 +213,81 @@ impl CustomOutputWidget {
             }
             _ => {}
         }
+    }
+}
+
+/// Formats file content for display based on file extension.
+///
+/// - JSON files are pretty-printed, with string fields that contain embedded
+///   YAML (or JSON) expanded into structured values.
+/// - YAML files are parsed and re-serialised cleanly.
+/// - Unknown extensions try JSON then YAML, falling back to raw content.
+fn format_content(raw: &str, filename: &str) -> String {
+    if raw.is_empty() {
+        return raw.to_string();
+    }
+
+    let ext = Path::new(filename)
+        .extension()
+        .and_then(|e| e.to_str())
+        .unwrap_or("")
+        .to_lowercase();
+
+    match ext.as_str() {
+        "json" => try_format_json(raw).unwrap_or_else(|| raw.to_string()),
+        "yaml" | "yml" => try_format_yaml(raw).unwrap_or_else(|| raw.to_string()),
+        _ => try_format_json(raw)
+            .or_else(|| try_format_yaml(raw))
+            .unwrap_or_else(|| raw.to_string()),
+    }
+}
+
+/// Parses JSON, expands embedded structured strings, and pretty-prints.
+fn try_format_json(raw: &str) -> Option<String> {
+    let mut value: JsonValue = serde_json::from_str(raw).ok()?;
+    expand_embedded_strings(&mut value);
+    serde_json::to_string_pretty(&value).ok()
+}
+
+/// Parses YAML and re-serialises it cleanly.
+fn try_format_yaml(raw: &str) -> Option<String> {
+    let value: serde_yml::Value = serde_yml::from_str(raw).ok()?;
+    // Only format if the top-level value is actually structured data.
+    if value.is_mapping() || value.is_sequence() {
+        serde_yml::to_string(&value).ok()
+    } else {
+        None
+    }
+}
+
+/// Walks a JSON value tree and, for every string that contains a newline,
+/// tries to parse it as YAML (which is a superset of JSON). If parsing
+/// produces a structured value (mapping/sequence), the string is replaced
+/// with that structured value so the final pretty-print shows it expanded.
+fn expand_embedded_strings(value: &mut JsonValue) {
+    match value {
+        JsonValue::String(s) => {
+            if !s.contains('\n') {
+                return;
+            }
+            if let Ok(parsed) = serde_yml::from_str::<serde_yml::Value>(s) {
+                if parsed.is_mapping() || parsed.is_sequence() {
+                    if let Ok(json_val) = serde_json::to_value(&parsed) {
+                        *value = json_val;
+                    }
+                }
+            }
+        }
+        JsonValue::Array(arr) => {
+            for item in arr {
+                expand_embedded_strings(item);
+            }
+        }
+        JsonValue::Object(map) => {
+            for v in map.values_mut() {
+                expand_embedded_strings(v);
+            }
+        }
+        _ => {}
     }
 }
