@@ -1,3 +1,4 @@
+use base64::{Engine, engine::general_purpose::STANDARD as BASE64};
 use color_eyre::Result;
 use crossterm::event::{KeyCode, KeyEvent, KeyEventKind, KeyModifiers, MouseEvent};
 use ratatui::{
@@ -12,7 +13,7 @@ use tokio::runtime::Runtime;
 
 use crate::{
     backend::{
-        JobState,
+        Job, JobState,
         commands::{cancel_jobs, check_slurm_available, list_nodes, list_partitions, list_qos},
         query::{QueryParams, fetch_jobs},
     },
@@ -21,6 +22,8 @@ use crate::{
             load_columns, load_filters, load_layout, save_columns, save_filters, save_layout,
         },
         input::{InputConfig, InputLoop, Signal},
+        job_detail::JobDetailResolver,
+        job_fetcher::JobFetcher,
     },
     views::{
         chrome::{build_frame, popup_rect, render_statusbar, render_titlebar},
@@ -71,6 +74,9 @@ pub struct Dashboard {
     pub sort_fields: Vec<OrderedField>,
     pub login_user: String,
     confirming_cancel: bool,
+    job_detail_resolver: JobDetailResolver,
+    job_fetcher: JobFetcher,
+    pending_filter_apply: bool,
 }
 
 impl Dashboard {
@@ -137,6 +143,9 @@ impl Dashboard {
             sort_fields,
             login_user: std::env::var("USER").unwrap_or_else(|_| "unknown".to_string()),
             confirming_cancel: false,
+            job_detail_resolver: JobDetailResolver::new(),
+            job_fetcher: JobFetcher::new(),
+            pending_filter_apply: false,
         })
     }
 
@@ -147,7 +156,7 @@ impl Dashboard {
     where
         B::Error: Send + Sync + 'static,
     {
-        self.reload_jobs()?;
+        self.reload_jobs_sync()?;
 
         while self.alive {
             terminal.draw(|f| self.draw(f))?;
@@ -157,7 +166,8 @@ impl Dashboard {
         Ok(())
     }
 
-    fn reload_jobs(&mut self) -> Result<()> {
+    /// Synchronous job reload — used only during initialization.
+    fn reload_jobs_sync(&mut self) -> Result<()> {
         self.rebuild_format();
 
         let p = self.params.clone();
@@ -204,6 +214,69 @@ impl Dashboard {
         self.table.set_jobs(jobs);
         self.refreshed_at = Instant::now();
         Ok(())
+    }
+
+    /// Submit an asynchronous job list reload to the background fetcher.
+    fn submit_reload(&mut self) {
+        self.rebuild_format();
+        let p = self.params.clone();
+        self.job_fetcher.submit(p);
+    }
+
+    /// Handle a completed async fetch result: apply regex filters and update the table.
+    fn apply_fetched_jobs(&mut self, mut jobs: Vec<Job>) {
+        let mut stats = Vec::new();
+        let total = jobs.len();
+
+        if let Some(ref pat) = self.params.user {
+            match Self::apply_regex_filter(&mut jobs, pat, |j| &j.user) {
+                Ok(Some(stat)) => stats.push(format!("user: {}", stat)),
+                Ok(None) => {}
+                Err(e) => self.flash(format!("Invalid user regex pattern: {}", e), 3),
+            }
+        }
+
+        if let Some(ref pat) = self.params.name_pattern {
+            match Self::apply_regex_filter(&mut jobs, pat, |j| &j.name) {
+                Ok(Some(stat)) => stats.push(format!("name: {}", stat)),
+                Ok(None) => {}
+                Err(e) => self.flash(format!("Invalid name regex pattern: {}", e), 3),
+            }
+        }
+
+        if self.pending_filter_apply {
+            self.pending_filter_apply = false;
+            let remaining = jobs.len();
+            let desc = self.filter_summary();
+            if !desc.is_empty() && desc != "No filters applied" {
+                self.flash(
+                    format!("Filters applied: {} ({} jobs shown)", desc, remaining),
+                    3,
+                );
+            } else {
+                self.flash(format!("Filters cleared ({} jobs shown)", remaining), 3);
+            }
+        } else if !stats.is_empty() {
+            let remaining = jobs.len();
+            let pct = if total > 0 {
+                (remaining as f64 / total as f64) * 100.0
+            } else {
+                100.0
+            };
+            self.flash(
+                format!(
+                    "Filtered: {}/{} total ({:.1}%) [{}]",
+                    remaining,
+                    total,
+                    pct,
+                    stats.join(", ")
+                ),
+                5,
+            );
+        }
+
+        self.table.set_jobs(jobs);
+        self.refreshed_at = Instant::now();
     }
 
     fn apply_regex_filter(
@@ -328,6 +401,17 @@ impl Dashboard {
             for cw in &mut self.custom_widgets {
                 cw.ensure_job(&id, work_dir.as_deref());
             }
+
+            // Request detail from background resolver (no-op if cached or in-flight)
+            self.job_detail_resolver.request(&id);
+
+            // Push cached detail to widgets that need it
+            let detail = self.job_detail_resolver.get_cached(&id).cloned();
+            if let Some(ref d) = detail {
+                self.stdout_widget.set_detail(d);
+                self.stderr_widget.set_detail(d);
+                self.script.set_detail(d);
+            }
         } else {
             self.script.clear_job();
             self.stdout_widget.clear_job();
@@ -335,6 +419,21 @@ impl Dashboard {
             for cw in &mut self.custom_widgets {
                 cw.clear_job();
             }
+        }
+    }
+
+    /// Push newly resolved job details to widgets after polling the resolver.
+    fn push_resolved_details(&mut self) {
+        let Some(job) = self.table.focused_job() else {
+            return;
+        };
+        let id = job.job_id.clone();
+
+        let detail = self.job_detail_resolver.get_cached(&id).cloned();
+        if let Some(ref d) = detail {
+            self.stdout_widget.set_detail(d);
+            self.stderr_widget.set_detail(d);
+            self.script.set_detail(d);
         }
     }
 
@@ -400,13 +499,32 @@ impl Dashboard {
     // ── Input handling ───────────────────────────────────────
 
     fn process_input(&mut self) -> Result<()> {
-        match self.input.rx.recv()? {
-            Signal::Keyboard(k) if k.kind == KeyEventKind::Press => self.on_keypress(k),
-            Signal::Mouse(m) => self.on_mouse(m),
-            Signal::TermResize(_, _) => {}
-            Signal::Timer => self.on_timer(),
-            _ => {}
+        // Block until the first event arrives.
+        let first = self.input.rx.recv()?;
+
+        // Drain every additional pending event so stale timers that
+        // accumulated while the terminal was unfocused are collapsed
+        // into a single tick instead of each triggering a full draw.
+        let mut events = vec![first];
+        while let Ok(sig) = self.input.rx.try_recv() {
+            events.push(sig);
         }
+
+        let mut had_timer = false;
+        for sig in events {
+            match sig {
+                Signal::Keyboard(k) if k.kind == KeyEventKind::Press => self.on_keypress(k),
+                Signal::Mouse(m) => self.on_mouse(m),
+                Signal::TermResize(_, _) => {}
+                Signal::Timer => had_timer = true,
+                _ => {}
+            }
+        }
+
+        if had_timer {
+            self.on_timer();
+        }
+
         Ok(())
     }
 
@@ -456,9 +574,7 @@ impl Dashboard {
                 FieldAction::Confirm => {
                     self.visible_fields = self.field_sel.active.clone();
                     self.sort_fields = self.field_sel.sort_list.clone();
-                    if let Err(e) = self.reload_jobs() {
-                        self.flash(format!("Failed to refresh: {}", e), 3);
-                    }
+                    self.submit_reload();
                 }
                 FieldAction::Save => {
                     self.visible_fields = self.field_sel.active.clone();
@@ -481,11 +597,41 @@ impl Dashboard {
 
         // ── Global keys ──
         match (key.modifiers, key.code) {
-            (_, KeyCode::Esc) | (KeyModifiers::CONTROL, KeyCode::Char('c')) => {
+            (_, KeyCode::Esc) => {
                 if self.focus != FocusWidget::Table {
                     self.focus = FocusWidget::Table;
                 } else {
                     self.alive = false;
+                }
+                return;
+            }
+            (KeyModifiers::CONTROL, KeyCode::Char('c')) => {
+                match &self.focus {
+                    FocusWidget::Script => {
+                        self.copy_to_clipboard(&self.script.body.clone());
+                        self.flash("Script contents copied".into(), 3);
+                    }
+                    FocusWidget::Stdout => {
+                        self.copy_to_clipboard(&self.stdout_widget.content.clone());
+                        self.flash("Stdout contents copied".into(), 3);
+                    }
+                    FocusWidget::Stderr => {
+                        self.copy_to_clipboard(&self.stderr_widget.content.clone());
+                        self.flash("Stderr contents copied".into(), 3);
+                    }
+                    FocusWidget::Custom(i) => {
+                        if let Some(cw) = self.custom_widgets.get(*i) {
+                            let title = cw.title.clone();
+                            self.copy_to_clipboard(&cw.content.clone());
+                            self.flash(format!("{} contents copied", title), 3);
+                        }
+                    }
+                    FocusWidget::Sidebar => {
+                        self.focus = FocusWidget::Table;
+                    }
+                    FocusWidget::Table => {
+                        self.alive = false;
+                    }
                 }
                 return;
             }
@@ -586,10 +732,8 @@ impl Dashboard {
                     &self.known_qos,
                     &self.known_nodes,
                 );
-                if action == FilterTreeAction::Applied
-                    && let Err(e) = self.apply_search()
-                {
-                    self.flash(format!("Failed to apply filters: {}", e), 3);
+                if action == FilterTreeAction::Applied {
+                    self.apply_search();
                 }
             }
         }
@@ -681,14 +825,34 @@ impl Dashboard {
     fn on_mouse(&mut self, _ev: MouseEvent) {}
 
     fn on_timer(&mut self) {
-        if !self.field_sel.visible
-            && !self.widget_sel.visible
-            && self.refreshed_at.elapsed().as_secs() >= self.refresh_secs
-            && let Err(e) = self.reload_jobs()
-        {
-            self.flash(format!("Auto-refresh failed: {}", e), 3);
+        // Poll for completed job list fetch
+        if let Some(result) = self.job_fetcher.poll() {
+            match result {
+                Ok(jobs) => self.apply_fetched_jobs(jobs),
+                Err(e) => {
+                    self.pending_filter_apply = false;
+                    self.flash(format!("Auto-refresh failed: {}", e), 3);
+                }
+            }
         }
 
+        // Submit new fetch if interval elapsed and none in-flight
+        if !self.job_fetcher.in_flight
+            && !self.field_sel.visible
+            && !self.widget_sel.visible
+            && self.refreshed_at.elapsed().as_secs() >= self.refresh_secs
+        {
+            self.submit_reload();
+        }
+
+        // Poll job detail resolver and push results to widgets
+        self.job_detail_resolver.poll();
+        self.push_resolved_details();
+
+        // Poll all visible widgets for file/content updates
+        if self.visible_widgets.script {
+            self.script.poll_updates();
+        }
         if self.visible_widgets.stdout {
             self.stdout_widget.poll_updates();
         }
@@ -706,30 +870,24 @@ impl Dashboard {
 
     // ── Helpers ──────────────────────────────────────────────
 
+    /// Copy text to the system clipboard via the OSC 52 escape sequence.
+    /// Works over SSH and inside tmux without requiring X11/Wayland.
+    fn copy_to_clipboard(&self, text: &str) {
+        let encoded = BASE64.encode(text);
+        let seq = format!("\x1b]52;c;{}\x07", encoded);
+        let _ = std::io::Write::write_all(&mut std::io::stdout(), seq.as_bytes());
+        let _ = std::io::Write::flush(&mut std::io::stdout());
+    }
+
     fn flash(&mut self, msg: String, secs: u64) {
         self.notice = msg;
         self.notice_expires = Some(Instant::now() + Duration::from_secs(secs));
     }
 
-    fn apply_search(&mut self) -> Result<()> {
+    fn apply_search(&mut self) {
         self.flash("Applying filters...".into(), 3);
-
-        let result = self.reload_jobs();
-
-        if result.is_ok() {
-            let desc = self.filter_summary();
-            let count = self.table.jobs.len();
-            if !desc.is_empty() && desc != "No filters applied" {
-                self.flash(
-                    format!("Filters applied: {} ({} jobs shown)", desc, count),
-                    3,
-                );
-            } else {
-                self.flash(format!("Filters cleared ({} jobs shown)", count), 3);
-            }
-        }
-
-        result
+        self.pending_filter_apply = true;
+        self.submit_reload();
     }
 
     fn filter_summary(&self) -> String {
@@ -811,11 +969,8 @@ impl Dashboard {
         let count = ids.len();
         match self.rt.block_on(cancel_jobs(ids)) {
             Ok(_) => {
-                if let Err(e) = self.reload_jobs() {
-                    self.flash(format!("Failed to refresh after cancel: {}", e), 3);
-                } else {
-                    self.flash(format!("Cancelled {} job(s)", count), 3);
-                }
+                self.submit_reload();
+                self.flash(format!("Cancelled {} job(s), refreshing...", count), 3);
             }
             Err(e) => {
                 self.flash(format!("Cancel failed: {}", e), 5);

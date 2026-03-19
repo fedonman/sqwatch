@@ -231,10 +231,13 @@ pub fn render_statusbar(
             bindings.push(("r", "Reset"));
             bindings.push(("Ctrl+S", "Save"));
         }
-        FocusWidget::Stdout | FocusWidget::Stderr | FocusWidget::Custom(_) => {
+        FocusWidget::Script
+        | FocusWidget::Stdout
+        | FocusWidget::Stderr
+        | FocusWidget::Custom(_) => {
             bindings.push(("PgUp/Dn", "Scroll"));
+            bindings.push(("Ctrl+C", "Copy"));
         }
-        FocusWidget::Script => {}
     }
 
     let mut spans: Vec<Span> = vec![Span::styled("  ", bar_style)];

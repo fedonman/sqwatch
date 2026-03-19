@@ -25,9 +25,10 @@ pub async fn run_cmd(program: &str, args: Vec<String>) -> Result<Output> {
 }
 
 /// Parsed result of `scontrol show job <id> -o`.
+#[derive(Clone)]
 #[expect(
     dead_code,
-    reason = "work_dir is parsed for completeness; used by custom widgets via Job.work_dir"
+    reason = "work_dir is parsed for completeness and cached by JobDetailResolver"
 )]
 pub struct JobDetail {
     pub stdout_file: Option<String>,
