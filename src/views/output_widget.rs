@@ -222,10 +222,9 @@ impl OutputWidget {
                 self.stream.label(),
                 self.job_id.as_deref().unwrap_or("unknown")
             ),
-            _ if self.content.is_empty() => format!(
-                "Waiting for {} content...",
-                self.stream.label()
-            ),
+            _ if self.content.is_empty() => {
+                format!("Waiting for {} content...", self.stream.label())
+            }
             _ => self.content.clone(),
         };
 
