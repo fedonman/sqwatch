@@ -273,9 +273,10 @@ fn expand_embedded_strings(value: &mut JsonValue) {
             }
             if let Ok(parsed) = serde_yml::from_str::<serde_yml::Value>(s)
                 && (parsed.is_mapping() || parsed.is_sequence())
-                    && let Ok(json_val) = serde_json::to_value(&parsed) {
-                        *value = json_val;
-                    }
+                && let Ok(json_val) = serde_json::to_value(&parsed)
+            {
+                *value = json_val;
+            }
         }
         JsonValue::Array(arr) => {
             for item in arr {
