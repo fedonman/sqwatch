@@ -1656,6 +1656,7 @@ name = "sqwatch"
 version = "0.1.0"
 dependencies = [
  "async-process",
+ "base64",
  "color-eyre",
  "crossbeam",
  "crossterm",

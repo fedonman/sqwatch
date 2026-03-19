@@ -1,3 +1,4 @@
+use base64::{Engine, engine::general_purpose::STANDARD as BASE64};
 use color_eyre::Result;
 use crossterm::event::{KeyCode, KeyEvent, KeyEventKind, KeyModifiers, MouseEvent};
 use ratatui::{
@@ -597,11 +598,41 @@ impl Dashboard {
 
         // ── Global keys ──
         match (key.modifiers, key.code) {
-            (_, KeyCode::Esc) | (KeyModifiers::CONTROL, KeyCode::Char('c')) => {
+            (_, KeyCode::Esc) => {
                 if self.focus != FocusWidget::Table {
                     self.focus = FocusWidget::Table;
                 } else {
                     self.alive = false;
+                }
+                return;
+            }
+            (KeyModifiers::CONTROL, KeyCode::Char('c')) => {
+                match &self.focus {
+                    FocusWidget::Script => {
+                        self.copy_to_clipboard(&self.script.body.clone());
+                        self.flash("Script contents copied".into(), 3);
+                    }
+                    FocusWidget::Stdout => {
+                        self.copy_to_clipboard(&self.stdout_widget.content.clone());
+                        self.flash("Stdout contents copied".into(), 3);
+                    }
+                    FocusWidget::Stderr => {
+                        self.copy_to_clipboard(&self.stderr_widget.content.clone());
+                        self.flash("Stderr contents copied".into(), 3);
+                    }
+                    FocusWidget::Custom(i) => {
+                        if let Some(cw) = self.custom_widgets.get(*i) {
+                            let title = cw.title.clone();
+                            self.copy_to_clipboard(&cw.content.clone());
+                            self.flash(format!("{} contents copied", title), 3);
+                        }
+                    }
+                    FocusWidget::Sidebar => {
+                        self.focus = FocusWidget::Table;
+                    }
+                    FocusWidget::Table => {
+                        self.alive = false;
+                    }
                 }
                 return;
             }
@@ -839,6 +870,15 @@ impl Dashboard {
     }
 
     // ── Helpers ──────────────────────────────────────────────
+
+    /// Copy text to the system clipboard via the OSC 52 escape sequence.
+    /// Works over SSH and inside tmux without requiring X11/Wayland.
+    fn copy_to_clipboard(&self, text: &str) {
+        let encoded = BASE64.encode(text);
+        let seq = format!("\x1b]52;c;{}\x07", encoded);
+        let _ = std::io::Write::write_all(&mut std::io::stdout(), seq.as_bytes());
+        let _ = std::io::Write::flush(&mut std::io::stdout());
+    }
 
     fn flash(&mut self, msg: String, secs: u64) {
         self.notice = msg;

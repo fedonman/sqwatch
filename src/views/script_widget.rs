@@ -1,5 +1,5 @@
 use crossbeam::channel::{Receiver, unbounded};
-use crossterm::event::{KeyCode, KeyEvent};
+use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use ratatui::{
     Frame,
     layout::Rect,
@@ -108,6 +108,15 @@ impl ScriptWidget {
         }
     }
 
+    pub fn page_up(&mut self) {
+        self.scroll_pos = self.scroll_pos.saturating_sub(10);
+    }
+
+    pub fn page_down(&mut self) {
+        let max = self.body.lines().count() * 2;
+        self.scroll_pos = (self.scroll_pos + 10).min(max);
+    }
+
     pub fn ensure_job(&mut self, job_id: &str, job_name: &str) {
         if self.job_id.as_deref() == Some(job_id) {
             return;
@@ -171,6 +180,10 @@ impl ScriptWidget {
         match (key.modifiers, key.code) {
             (_, KeyCode::Up) => self.scroll_up(),
             (_, KeyCode::Down) => self.scroll_down(),
+            (_, KeyCode::PageUp) | (KeyModifiers::CONTROL, KeyCode::Char('u')) => self.page_up(),
+            (_, KeyCode::PageDown) | (KeyModifiers::CONTROL, KeyCode::Char('d')) => {
+                self.page_down()
+            }
             _ => {}
         }
     }
