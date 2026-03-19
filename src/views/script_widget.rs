@@ -1,3 +1,4 @@
+use crossbeam::channel::{Receiver, unbounded};
 use crossterm::event::{KeyCode, KeyEvent};
 use ratatui::{
     Frame,
@@ -9,8 +10,9 @@ use ratatui::{
 use regex::Regex;
 use std::process::Command;
 use std::sync::LazyLock;
+use std::thread;
 
-use crate::backend::commands::scontrol_show_job;
+use crate::backend::commands::JobDetail;
 
 static ANSI_ESCAPE_RE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"\x1B\[([0-9;]*)m").unwrap());
 
@@ -21,6 +23,8 @@ pub struct ScriptWidget {
     pub scroll_pos: usize,
     pub path: Option<String>,
     pub has_bat: bool,
+    content_rx: Option<Receiver<String>>,
+    loading: bool,
 }
 
 impl ScriptWidget {
@@ -32,6 +36,8 @@ impl ScriptWidget {
             scroll_pos: 0,
             path: None,
             has_bat: detect_bat(),
+            content_rx: None,
+            loading: false,
         }
     }
 
@@ -39,8 +45,56 @@ impl ScriptWidget {
         self.job_id = Some(id);
         self.job_name = Some(label);
         self.path = None;
+        self.body.clear();
         self.scroll_pos = 0;
-        self.load_content();
+        self.loading = true;
+        self.content_rx = None;
+    }
+
+    /// Apply resolved job detail from the background resolver.
+    /// Extracts the script path and spawns a background thread for loading.
+    pub fn set_detail(&mut self, detail: &JobDetail) {
+        if self.path.is_some() || !self.loading {
+            return;
+        }
+
+        let Some(script_path) = &detail.command else {
+            self.body = "No script found for this job. Maybe it's wrapped".into();
+            self.loading = false;
+            return;
+        };
+
+        self.spawn_load(script_path.clone());
+    }
+
+    fn spawn_load(&mut self, script_path: String) {
+        self.path = Some(script_path.clone());
+        let has_bat = self.has_bat;
+        let (tx, rx) = unbounded();
+        self.content_rx = Some(rx);
+
+        thread::spawn(move || {
+            let content = if has_bat {
+                run_bat(&script_path).unwrap_or_else(|| {
+                    std::fs::read_to_string(&script_path)
+                        .unwrap_or_else(|_| format!("Failed to read: {}", script_path))
+                })
+            } else {
+                std::fs::read_to_string(&script_path)
+                    .unwrap_or_else(|_| format!("Failed to read script from path: {}", script_path))
+            };
+            let _ = tx.send(content);
+        });
+    }
+
+    pub fn poll_updates(&mut self) {
+        if let Some(rx) = &self.content_rx {
+            if let Ok(text) = rx.try_recv() {
+                self.body = text;
+                self.loading = false;
+                self.content_rx = None;
+            }
+        }
     }
 
     pub fn scroll_up(&mut self) {
@@ -66,6 +120,8 @@ impl ScriptWidget {
         self.job_name = None;
         self.body.clear();
         self.scroll_pos = 0;
+        self.loading = false;
+        self.content_rx = None;
     }
 
     pub fn render_inline(&self, frame: &mut Frame, area: Rect, focused: bool) {
@@ -88,6 +144,14 @@ impl ScriptWidget {
 
         if self.job_id.is_none() {
             let placeholder = Paragraph::new("Select a job to view its script")
+                .style(Style::default().fg(Color::DarkGray))
+                .block(block);
+            frame.render_widget(placeholder, area);
+            return;
+        }
+
+        if self.loading && self.body.is_empty() {
+            let placeholder = Paragraph::new("Loading script...")
                 .style(Style::default().fg(Color::DarkGray))
                 .block(block);
             frame.render_widget(placeholder, area);
@@ -134,40 +198,6 @@ impl ScriptWidget {
             .collect();
 
         Text::from(numbered)
-    }
-
-    fn load_content(&mut self) {
-        let Some(id) = &self.job_id else {
-            self.body.clear();
-            return;
-        };
-
-        let Some(detail) = scontrol_show_job(id) else {
-            self.body = "Failed to retrieve job information".into();
-            return;
-        };
-
-        let Some(script_path) = detail.command else {
-            self.body = "No script found for this job. Maybe it's wrapped".into();
-            return;
-        };
-
-        self.path = Some(script_path.clone());
-
-        if self.has_bat
-            && let Some(highlighted) = run_bat(&script_path)
-        {
-            self.body = highlighted;
-            return;
-        }
-
-        self.has_bat = false;
-        match std::fs::read_to_string(&script_path) {
-            Ok(content) => self.body = content,
-            Err(_) => {
-                self.body = format!("Failed to read script from path: {}", script_path);
-            }
-        }
     }
 }
 

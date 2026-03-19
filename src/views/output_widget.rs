@@ -8,7 +8,7 @@ use ratatui::{
 };
 use std::{path::PathBuf, time::Duration};
 
-use crate::backend::commands::scontrol_show_job;
+use crate::backend::commands::JobDetail;
 use crate::core::live_file::{LiveFileMonitor, MonitorError};
 
 const POLL_INTERVAL: Duration = Duration::from_secs(1);
@@ -30,6 +30,7 @@ impl StreamKind {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum FileState {
+    Loading,
     Missing,
     Pending,
     Failed,
@@ -46,6 +47,7 @@ pub struct OutputWidget {
     monitor: Option<LiveFileMonitor>,
     data_rx: Option<Receiver<Result<String, MonitorError>>>,
     fstate: FileState,
+    detail_applied: bool,
 }
 
 impl OutputWidget {
@@ -61,6 +63,7 @@ impl OutputWidget {
             monitor: None,
             data_rx: None,
             fstate: FileState::Missing,
+            detail_applied: false,
         }
     }
 
@@ -68,16 +71,44 @@ impl OutputWidget {
         self.job_id = Some(job_id);
         self.stdout_file = None;
         self.stderr_file = None;
+        self.content.clear();
         self.scroll_pos = 0;
-        self.fstate = FileState::Missing;
-
-        self.resolve_log_paths();
+        self.fstate = FileState::Loading;
+        self.detail_applied = false;
 
         if self.monitor.is_none() {
             let (tx, rx) = unbounded();
             self.monitor = Some(LiveFileMonitor::new(tx, POLL_INTERVAL));
             self.data_rx = Some(rx);
         }
+
+        // Clear the current file watch while we wait for job detail
+        if let Some(m) = &mut self.monitor {
+            m.set_file_path(None);
+        }
+    }
+
+    /// Apply resolved job detail from the background resolver.
+    /// Idempotent — returns immediately if detail was already applied.
+    pub fn set_detail(&mut self, detail: &JobDetail) {
+        if self.detail_applied {
+            return;
+        }
+        self.detail_applied = true;
+
+        self.stdout_file = detail.stdout_file.clone();
+        self.stderr_file = detail.stderr_file.clone();
+
+        let has_current = match self.stream {
+            StreamKind::Stdout => self.stdout_file.as_ref().is_some_and(|p| !p.is_empty()),
+            StreamKind::Stderr => self.stderr_file.as_ref().is_some_and(|p| !p.is_empty()),
+        };
+
+        self.fstate = if has_current {
+            FileState::Pending
+        } else {
+            FileState::Missing
+        };
 
         self.refresh_watched_file();
     }
@@ -148,6 +179,7 @@ impl OutputWidget {
         self.content.clear();
         self.scroll_pos = 0;
         self.fstate = FileState::Missing;
+        self.detail_applied = false;
         if let Some(m) = &mut self.monitor {
             m.set_file_path(None);
         }
@@ -179,11 +211,20 @@ impl OutputWidget {
             return;
         }
 
-        let display_text = match (self.fstate, self.content.is_empty()) {
-            (FileState::Missing, _) => format!(
+        let display_text = match self.fstate {
+            FileState::Loading => format!(
+                "Loading {} details for job {}...",
+                self.stream.label(),
+                self.job_id.as_deref().unwrap_or("unknown")
+            ),
+            FileState::Missing => format!(
                 "No {} log file found for job {}",
                 self.stream.label(),
                 self.job_id.as_deref().unwrap_or("unknown")
+            ),
+            _ if self.content.is_empty() => format!(
+                "Waiting for {} content...",
+                self.stream.label()
             ),
             _ => self.content.clone(),
         };
@@ -212,31 +253,5 @@ impl OutputWidget {
             }
             _ => {}
         }
-    }
-
-    fn resolve_log_paths(&mut self) {
-        let Some(id) = &self.job_id else {
-            self.fstate = FileState::Missing;
-            return;
-        };
-
-        let Some(detail) = scontrol_show_job(id) else {
-            self.fstate = FileState::Failed;
-            return;
-        };
-
-        self.stdout_file = detail.stdout_file;
-        self.stderr_file = detail.stderr_file;
-
-        let has_current = match self.stream {
-            StreamKind::Stdout => self.stdout_file.as_ref().is_some_and(|p| !p.is_empty()),
-            StreamKind::Stderr => self.stderr_file.as_ref().is_some_and(|p| !p.is_empty()),
-        };
-
-        self.fstate = if has_current {
-            FileState::Pending
-        } else {
-            FileState::Missing
-        };
     }
 }
