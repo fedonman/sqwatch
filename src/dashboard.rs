@@ -499,13 +499,32 @@ impl Dashboard {
     // ── Input handling ───────────────────────────────────────
 
     fn process_input(&mut self) -> Result<()> {
-        match self.input.rx.recv()? {
-            Signal::Keyboard(k) if k.kind == KeyEventKind::Press => self.on_keypress(k),
-            Signal::Mouse(m) => self.on_mouse(m),
-            Signal::TermResize(_, _) => {}
-            Signal::Timer => self.on_timer(),
-            _ => {}
+        // Block until the first event arrives.
+        let first = self.input.rx.recv()?;
+
+        // Drain every additional pending event so stale timers that
+        // accumulated while the terminal was unfocused are collapsed
+        // into a single tick instead of each triggering a full draw.
+        let mut events = vec![first];
+        while let Ok(sig) = self.input.rx.try_recv() {
+            events.push(sig);
         }
+
+        let mut had_timer = false;
+        for sig in events {
+            match sig {
+                Signal::Keyboard(k) if k.kind == KeyEventKind::Press => self.on_keypress(k),
+                Signal::Mouse(m) => self.on_mouse(m),
+                Signal::TermResize(_, _) => {}
+                Signal::Timer => had_timer = true,
+                _ => {}
+            }
+        }
+
+        if had_timer {
+            self.on_timer();
+        }
+
         Ok(())
     }
 
