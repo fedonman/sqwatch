@@ -27,7 +27,7 @@ impl WidgetKind {
     pub fn label<'a>(&self, custom_defs: &'a [CustomWidgetDef]) -> &'a str {
         match self {
             WidgetKind::Filters => "Filters",
-            WidgetKind::Script => "Execution Script",
+            WidgetKind::Script => "Script",
             WidgetKind::Stdout => "stdout",
             WidgetKind::Stderr => "stderr",
             WidgetKind::Custom(i) => custom_defs
