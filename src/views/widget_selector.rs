@@ -228,14 +228,26 @@ impl WidgetSelector {
                     WidgetSelectorAction::Noop
                 }
             }
-            KeyCode::Char('a') => {
+            KeyCode::Char('a') if key.modifiers.contains(KeyModifiers::CONTROL) => {
                 self.adding = true;
                 self.add_phase = AddPhase::Title;
                 self.add_title_buf.clear();
                 self.add_filename_buf.clear();
                 WidgetSelectorAction::Noop
             }
-            KeyCode::Char('d') | KeyCode::Delete => {
+            KeyCode::Char('d') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+                if self.cursor < item_count
+                    && let WidgetKind::Custom(i) = &all_kinds[self.cursor]
+                {
+                    widgets.remove_custom(*i);
+                    if self.cursor > 0 && self.cursor >= item_count - 1 {
+                        self.cursor -= 1;
+                    }
+                    return WidgetSelectorAction::Changed;
+                }
+                WidgetSelectorAction::Noop
+            }
+            KeyCode::Delete => {
                 if self.cursor < item_count
                     && let WidgetKind::Custom(i) = &all_kinds[self.cursor]
                 {
@@ -378,7 +390,7 @@ impl WidgetSelector {
 
         lines.push(Line::raw(""));
 
-        let hint = " \u{2191}\u{2193}: Navigate | Enter: Toggle | a: Add | d: Delete | Ctrl+S: Save | Esc: Close";
+        let hint = " \u{2191}\u{2193}: Navigate | Enter: Toggle | Ctrl+A: Add | Ctrl+D/Del: Delete | Ctrl+S: Save | Esc: Close";
         lines.push(Line::from(Span::styled(
             hint,
             Style::default().fg(Color::DarkGray),

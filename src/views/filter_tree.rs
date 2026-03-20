@@ -1,4 +1,4 @@
-use crossterm::event::{KeyCode, KeyEvent};
+use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use ratatui::{
     Frame,
     layout::{Position, Rect},
@@ -226,7 +226,7 @@ impl FilterTree {
                     FilterTreeAction::Noop
                 }
             }
-            KeyCode::Char('r') => {
+            KeyCode::Char('r') if key.modifiers.contains(KeyModifiers::CONTROL) => {
                 params.statuses.clear();
                 params.partitions.clear();
                 params.qos.clear();
