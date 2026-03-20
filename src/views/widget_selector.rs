@@ -12,7 +12,7 @@ use super::theme::{ACCENT, CHECKED_COLOR, DIM_BORDER, POPUP_BG, UNCHECKED_COLOR}
 
 const CUSTOM_COLOR: Color = Color::Rgb(180, 130, 255);
 const CUSTOM_DIM: Color = Color::Rgb(120, 100, 160);
-const MAX_RIGHT_WIDGETS: usize = 6;
+const MAX_RIGHT_SLOTS: usize = 3;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum WidgetKind {
@@ -98,18 +98,9 @@ impl VisibleWidgets {
         }
     }
 
-    /// Count of visible right-panel widgets (excludes the sidebar).
-    pub fn right_widget_count(&self) -> usize {
-        let builtin = [self.script, self.stdout, self.stderr]
-            .iter()
-            .filter(|&&v| v)
-            .count();
-        let custom = self.custom.iter().filter(|c| c.visible).count();
-        builtin + custom
-    }
-
-    /// Ordered list of visible right-panel widget kinds.
-    pub fn visible_right_widgets(&self) -> Vec<WidgetKind> {
+    /// Ordered list of all visible panel widget kinds
+    /// (script, stdout, stderr, then custom — in priority order).
+    pub fn visible_panel_widgets(&self) -> Vec<WidgetKind> {
         let mut out = Vec::new();
         if self.script {
             out.push(WidgetKind::Script);
@@ -126,6 +117,22 @@ impl VisibleWidgets {
             }
         }
         out
+    }
+
+    /// Whether another panel widget can be toggled on.
+    /// The grid has N rows; the right column takes min(N, total) widgets
+    /// and overflow fills the left column below the table. The table must
+    /// keep at least one row, so total visible panels are capped at 2*N - 1
+    /// where N = right-column count = min(total, MAX_RIGHT_SLOTS).
+    pub fn can_add_panel(&self) -> bool {
+        let total = self.visible_panel_widgets().len();
+        // With 0 panels the split doesn't exist yet, always allow
+        if total == 0 {
+            return true;
+        }
+        let right_slots = total.min(MAX_RIGHT_SLOTS);
+        // Left column can hold at most (right_slots - 1) overflow widgets
+        total < right_slots + right_slots.saturating_sub(1)
     }
 
     /// Full ordered list for the widget selector (all items including hidden).
@@ -218,7 +225,7 @@ impl WidgetSelector {
                     // Enforce cap: only block toggling ON, not OFF
                     if !widgets.is_visible(kind)
                         && *kind != WidgetKind::Filters
-                        && widgets.right_widget_count() >= MAX_RIGHT_WIDGETS
+                        && !widgets.can_add_panel()
                     {
                         return WidgetSelectorAction::Noop;
                     }

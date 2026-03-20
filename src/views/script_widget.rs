@@ -135,11 +135,7 @@ impl ScriptWidget {
     }
 
     pub fn render_inline(&self, frame: &mut Frame, area: Rect, focused: bool) {
-        let border_color = if focused {
-            ACCENT_SCRIPT
-        } else {
-            DIM_BORDER
-        };
+        let border_color = if focused { ACCENT_SCRIPT } else { DIM_BORDER };
 
         let block = Block::default()
             .title(" Script ")
