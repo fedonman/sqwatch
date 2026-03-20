@@ -215,13 +215,14 @@ pub fn render_statusbar(
         ("Esc", "Quit"),
         ("Tab", "Focus"),
         ("\u{2191}\u{2193}", "Navigation"),
-        ("Ctrl+W", "Widgets"),
-        ("Ctrl+C", "Columns"),
+        ("Ctrl+W", "Widgets")
     ];
 
     // Context-specific bindings per focused widget
     match focus {
-        FocusWidget::Table => {}
+        FocusWidget::Table => {
+            bindings.push(("Ctrl+C", "Columns"));
+        }
         FocusWidget::Sidebar => {
             bindings.push(("Enter", "Edit/Toggle"));
             bindings.push(("Ctrl+S", "Save"));
