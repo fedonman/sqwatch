@@ -285,7 +285,7 @@ impl WidgetSelector {
                         widgets.custom.push(CustomWidgetDef {
                             title: self.add_title_buf.trim().to_string(),
                             filename: self.add_filename_buf.trim().to_string(),
-                            visible: true,
+                            visible: widgets.can_add_panel(),
                         });
                         self.adding = false;
                         self.cursor = BUILTIN_ORDER.len() + widgets.custom.len() - 1;
