@@ -120,19 +120,12 @@ impl VisibleWidgets {
     }
 
     /// Whether another panel widget can be toggled on.
-    /// The grid has N rows; the right column takes min(N, total) widgets
-    /// and overflow fills the left column below the table. The table must
-    /// keep at least one row, so total visible panels are capped at 2*N - 1
-    /// where N = right-column count = min(total, MAX_RIGHT_SLOTS).
+    /// Right column holds up to MAX_RIGHT_SLOTS widgets, overflow fills the
+    /// left column below the table. The table must keep at least one row,
+    /// so total visible panels are capped at 2 * MAX_RIGHT_SLOTS - 1.
     pub fn can_add_panel(&self) -> bool {
         let total = self.visible_panel_widgets().len();
-        // With 0 panels the split doesn't exist yet, always allow
-        if total == 0 {
-            return true;
-        }
-        let right_slots = total.min(MAX_RIGHT_SLOTS);
-        // Left column can hold at most (right_slots - 1) overflow widgets
-        total < right_slots + right_slots.saturating_sub(1)
+        total < 2 * MAX_RIGHT_SLOTS - 1
     }
 
     /// Full ordered list for the widget selector (all items including hidden).

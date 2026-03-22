@@ -101,6 +101,9 @@ pub fn build_frame(frame: &mut Frame, widgets: &VisibleWidgets) -> FrameLayout {
         };
     }
 
+    // Cap overflow so the table always keeps at least one row.
+    let overflow_count = overflow_count.min(right_count.saturating_sub(1));
+
     // Split left column into the same grid as the right column.
     // Table spans the top rows, overflow widgets fill bottom rows.
     let table_rows = right_count - overflow_count;
@@ -129,7 +132,7 @@ pub fn build_frame(frame: &mut Frame, widgets: &VisibleWidgets) -> FrameLayout {
     // Overflow widgets fill bottom rows of left column.
     // Positions D, E (bottom to top): the last overflow widget sits at the
     // bottom row, the second-to-last above it, etc.
-    let overflow = &all_panels[right_count..];
+    let overflow = &all_panels[right_count..right_count + overflow_count];
     let bottom_widgets: Vec<(WidgetKind, Rect)> = overflow
         .iter()
         .rev()
