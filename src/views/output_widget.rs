@@ -10,6 +10,7 @@ use std::{path::PathBuf, time::Duration};
 
 use crate::backend::commands::JobDetail;
 use crate::core::live_file::{LiveFileMonitor, MonitorError};
+use crate::views::theme::{ACCENT_STDERR, ACCENT_STDOUT, DIM_BORDER};
 
 const POLL_INTERVAL: Duration = Duration::from_secs(1);
 
@@ -186,21 +187,20 @@ impl OutputWidget {
     }
 
     pub fn render_inline(&mut self, frame: &mut Frame, area: Rect, focused: bool) {
-        let border_color = if focused {
-            Color::Magenta
-        } else {
-            Color::Rgb(80, 80, 110)
+        let focused_color = match self.stream {
+            StreamKind::Stdout => ACCENT_STDOUT,
+            StreamKind::Stderr => ACCENT_STDERR,
         };
-
-        let title = match &self.job_id {
-            Some(id) => format!(" {} [{}] ", self.stream.label(), id),
-            None => format!(" {} ", self.stream.label()),
-        };
+        let border_color = if focused { focused_color } else { DIM_BORDER };
 
         let block = Block::default()
-            .title(title)
+            .title(format!(" {} ", self.stream.label()))
             .borders(Borders::ALL)
-            .border_type(BorderType::Rounded)
+            .border_type(if focused {
+                BorderType::Double
+            } else {
+                BorderType::Rounded
+            })
             .border_style(Style::default().fg(border_color));
 
         if self.job_id.is_none() {

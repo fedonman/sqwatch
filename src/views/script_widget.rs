@@ -13,6 +13,7 @@ use std::sync::LazyLock;
 use std::thread;
 
 use crate::backend::commands::JobDetail;
+use crate::views::theme::{ACCENT_SCRIPT, DIM_BORDER};
 
 static ANSI_ESCAPE_RE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"\x1B\[([0-9;]*)m").unwrap());
 
@@ -134,21 +135,16 @@ impl ScriptWidget {
     }
 
     pub fn render_inline(&self, frame: &mut Frame, area: Rect, focused: bool) {
-        let border_color = if focused {
-            Color::Magenta
-        } else {
-            Color::Rgb(80, 80, 110)
-        };
-
-        let title = match (&self.job_id, &self.job_name) {
-            (Some(id), Some(name)) => format!(" Script: {}/{} ", name, id),
-            _ => " Script ".to_string(),
-        };
+        let border_color = if focused { ACCENT_SCRIPT } else { DIM_BORDER };
 
         let block = Block::default()
-            .title(title)
+            .title(" Script ")
             .borders(Borders::ALL)
-            .border_type(BorderType::Rounded)
+            .border_type(if focused {
+                BorderType::Double
+            } else {
+                BorderType::Rounded
+            })
             .border_style(Style::default().fg(border_color));
 
         if self.job_id.is_none() {

@@ -1,4 +1,4 @@
-# sqwatch
+# sqwatch - SLURM Queue Watcher
 
 A lightweight terminal UI for watching and managing SLURM job queues in real time.
 
@@ -6,11 +6,14 @@ A lightweight terminal UI for watching and managing SLURM job queues in real tim
 
 ## Features
 
-- **Live queue view** — Auto-refreshing job table with color-coded states (pending, running, failed, completed, suspended, out of memory, etc.). Job selection and cursor position are preserved across refresh cycles.
-- **Flexible filtering** — Filter by user (regex), job name (regex), state, partition, QoS, or node. Partitions, QoS, and nodes are populated from the cluster automatically. Filter settings are persisted to disk and restored on launch.
+- **Live queue view** — Auto-refreshing job table with color-coded states (pending, running, failed, completed, suspended, out of memory, etc.). Job selection and cursor position are preserved across refresh cycles. Job fetching runs in a background thread so the UI never stalls.
+- **Flexible filtering** — Persistent sidebar for filtering by user (regex), job name (regex), state, partition, QoS, or node. Partitions, QoS, and nodes are populated from the cluster automatically. Filter settings are persisted to disk and restored on launch.
 - **Column configuration** — Choose which `squeue` fields to display, reorder them, and define multi-level sort priorities. Column settings are also persisted.
-- **Script inspector** — Read the submission script of any job, with syntax highlighting via [`bat`](https://github.com/sharkdp/bat) if available. Falls back to plain text with line numbers.
+- **Script inspector** — View the submission script of any job, with syntax highlighting via [`bat`](https://github.com/sharkdp/bat) if available. Falls back to plain text with line numbers. Script content loads in a background thread.
 - **Log viewer** — Tail stdout/stderr logs in real time with automatic file watching via `notify`.
+- **Custom output widgets** — Define additional file-watching panels for arbitrary job output files, with automatic JSON pretty-printing.
+- **Widget layout** — Toggle visibility of individual panels (filters, script, stdout, stderr, custom widgets) and persist your preferred layout.
+- **Clipboard support** — Copy widget contents to the system clipboard via OSC 52, which works over SSH and inside tmux without X11/Wayland.
 - **Bulk actions** — Select one or many jobs and cancel them in batch with confirmation. Errors from `scancel` are reported through the flash notification bar.
 
 ## Requirements
@@ -51,32 +54,72 @@ Settings are stored in `~/.config/sqwatch/` (or `$XDG_CONFIG_HOME/sqwatch/`):
 |------|----------|
 | `filters.json` | Saved filter presets (user, states, partitions, QoS, nodes, name pattern) |
 | `columns.json` | Visible columns and sort order |
+| `layout.json` | Widget visibility and custom widget definitions |
 
-Press `Ctrl+S` inside the filter or column dialog to persist the current configuration.
+Press `Ctrl+S` inside the filter sidebar, column dialog, or widget selector to persist the current configuration.
 
 ## Keybindings
 
-### Main View
+### Global
+
+| Key | Action |
+|-----|--------|
+| `Tab` | Cycle focus to next visible widget |
+| `Shift+Tab` | Cycle focus to previous visible widget |
+| `w` | Open widget selector (toggle panel visibility) |
+| `c` | Open column / sort configuration (when table is focused) |
+| `Esc` | Return focus to table, or quit if already on table |
+| `Ctrl+C` | Copy focused widget contents to clipboard, or quit if on table |
+
+### Job Table
 
 | Key | Action |
 |-----|--------|
 | `Up` / `Down` | Navigate job list |
 | `Space` | Toggle selection on focused job |
 | `a` | Select / deselect all |
-| `s` | View job script |
-| `v` | View job log (stdout/stderr) |
-| `f` | Open filter dialog |
-| `c` | Open column / sort configuration |
 | `x` | Cancel selected jobs (with confirmation) |
-| `Esc` / `Ctrl+C` | Close overlay or quit |
 
-### Script / Log Viewer
+### Script / Log / Custom Widgets
 
 | Key | Action |
 |-----|--------|
 | `Up` / `Down` | Scroll content |
-| `Shift+Up` / `Shift+Down` | Switch to previous/next job |
-| `Esc` | Close viewer |
+| `PageUp` / `PageDown` | Scroll one page |
+| `Ctrl+U` / `Ctrl+D` | Scroll one page (vim-style) |
+| `Shift+Up` / `Shift+Down` | Switch to previous/next job in the table |
+
+### Filter Sidebar
+
+| Key | Action |
+|-----|--------|
+| `Up` / `Down` | Navigate between fields and filter sections |
+| `Enter` | Edit text field or toggle checkbox |
+| `Space` | Toggle checkbox item |
+| `Ctrl+S` | Save filter settings to disk |
+
+### Column / Sort Configuration
+
+| Key | Action |
+|-----|--------|
+| `Up` / `Down` | Navigate within a list |
+| `Left` / `Right` | Switch between pool, active, and sort lists |
+| `Enter` | Add field to selected / sort, or toggle sort order |
+| `Del` | Remove field from list |
+| `Shift+Up` / `Shift+Down` | Reorder items |
+| `Tab` | Cycle between lists |
+| `r` | Reset to defaults |
+| `Ctrl+S` | Save column settings to disk |
+| `Esc` | Close |
+
+### Widget Selector
+
+| Key | Action |
+|-----|--------|
+| `Up` / `Down` | Navigate widget list |
+| `Enter` / `Space` | Toggle widget visibility |
+| `Ctrl+S` | Save layout to disk |
+| `Esc` | Close |
 
 ## Architecture
 
@@ -84,32 +127,39 @@ The project is organized into four modules:
 
 ```
 src/
-├── main.rs              # Entry point — terminal setup and teardown
-├── dashboard.rs         # Central orchestrator — event loop, state, rendering
+├── main.rs                # Entry point — terminal setup and teardown
+├── dashboard.rs           # Central orchestrator — event loop, state, rendering
 ├── backend/
-│   ├── mod.rs           # Job and JobState data types
-│   ├── commands.rs      # Async wrappers around SLURM CLI tools
-│   └── query.rs         # squeue invocation and output parsing
+│   ├── mod.rs             # Job and JobState data types
+│   ├── commands.rs        # Async wrappers around SLURM CLI tools
+│   └── query.rs           # squeue invocation and output parsing
 ├── core/
-│   ├── input.rs         # Keyboard/mouse/timer event loop (crossbeam channels)
-│   ├── config.rs        # Filter and column persistence (JSON, XDG paths)
-│   └── live_file.rs     # File watcher for live log tailing (notify crate)
+│   ├── mod.rs
+│   ├── input.rs           # Keyboard/mouse/timer event loop (crossbeam channels)
+│   ├── config.rs          # Filter, column, and layout persistence (JSON, XDG paths)
+│   ├── job_fetcher.rs     # Background thread for periodic squeue refreshes
+│   ├── job_detail.rs      # Background scontrol cache (LRU, max 64 entries)
+│   └── live_file.rs       # File watcher for live log tailing (notify crate)
 └── views/
-    ├── chrome.rs         # Titlebar, statusbar, and layout framing
-    ├── job_table.rs      # Job list table with selection and sorting
-    ├── search.rs         # Filter dialog (multi-tab, selectable lists)
-    ├── fields.rs         # Column and sort configuration dialog
-    ├── script_pane.rs    # Job script viewer with optional bat highlighting
-    └── output_pane.rs    # Live log viewer (stdout/stderr)
+    ├── mod.rs
+    ├── chrome.rs           # Titlebar, statusbar, and layout framing
+    ├── job_table.rs        # Job list table with selection and sorting
+    ├── filter_tree.rs      # Persistent filter sidebar with regex text fields and checkbox lists
+    ├── fields.rs           # Column and sort configuration dialog
+    ├── script_widget.rs    # Job script viewer with optional bat highlighting
+    ├── output_widget.rs    # Live log viewer (stdout/stderr)
+    ├── custom_widget.rs    # User-defined file-watching panels
+    ├── widget_selector.rs  # Panel visibility toggle popup
+    └── theme.rs            # Centralized color constants
 ```
 
 **Dashboard** is the central hub. It owns all view components, the query parameters, the tokio runtime for async SLURM commands, and the input event channel. The main loop is: receive input signal → dispatch to the appropriate handler → redraw.
 
 **Backend** wraps all SLURM interactions. Commands are executed asynchronously via `async-process` and dispatched through a shared tokio runtime. The query module builds `squeue` invocations with dynamic format strings and parses the pipe-delimited output.
 
-**Core** handles cross-cutting concerns: the input loop runs on a dedicated thread, multiplexing keyboard, mouse, resize, and timer events into a single `crossbeam` channel. The config module manages JSON persistence for filters and columns. The live file watcher uses `notify` to detect log file changes for real-time tailing.
+**Core** handles cross-cutting concerns: the input loop runs on a dedicated thread, multiplexing keyboard, mouse, resize, and timer events into a single `crossbeam` channel. Background workers (`job_fetcher` and `job_detail`) run SLURM queries off the main thread, communicating results back via crossbeam channels polled on timer ticks. The config module manages JSON persistence for filters, columns, and layout. The live file watcher uses `notify` to detect log file changes for real-time tailing.
 
-**Views** are pure rendering components. Each one receives a `Frame` and `Rect` from ratatui and draws itself. Overlay panes (script, log, filter, columns) are rendered on top of the main job table via popup regions.
+**Views** are pure rendering components. Each one receives a `Frame` and `Rect` from ratatui and draws itself. The filter sidebar is a persistent side panel, while overlays (column config, widget selector) are rendered on top of the main layout via popup regions.
 
 ## Developers
 
@@ -127,17 +177,17 @@ cargo build
 ### Running checks
 
 ```sh
-cargo fmt --all --check       # Formatting (requires nightly rustfmt)
+cargo fmt --all --check                     # Formatting (requires nightly rustfmt)
 cargo clippy --all-targets -- -D warnings   # Linting
-cargo test                    # Tests
-cargo deny check              # License and advisory audit
+cargo test                                  # Tests
+cargo deny check                            # License and advisory audit
 ```
 
 ### Project conventions
 
 - **Edition 2024** — uses let-chains and other modern Rust features.
 - **No `unsafe`** — the codebase is entirely safe Rust.
-- **Async for SLURM commands only** — the TUI event loop is synchronous; async is used solely for non-blocking SLURM CLI calls via `async-process` + tokio.
+- **Async for SLURM commands only** — the TUI event loop is synchronous; async is used solely for non-blocking SLURM CLI calls via `async-process` + tokio. Background workers use crossbeam channels, not async, to communicate with the dashboard.
 - **`color-eyre`** for error handling — `Result<()>` flows from `main()` through the dashboard.
 
 ## Contributing

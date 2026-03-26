@@ -11,9 +11,9 @@ use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 use crate::core::live_file::{LiveFileMonitor, MonitorError};
+use crate::views::theme::{ACCENT_CUSTOM, DIM_BORDER};
 
 const POLL_INTERVAL: Duration = Duration::from_secs(1);
-const CUSTOM_ACCENT: Color = Color::Rgb(180, 130, 255);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum FileState {
@@ -155,21 +155,16 @@ impl CustomOutputWidget {
     }
 
     pub fn render_inline(&mut self, frame: &mut Frame, area: Rect, focused: bool) {
-        let border_color = if focused {
-            CUSTOM_ACCENT
-        } else {
-            Color::Rgb(80, 80, 110)
-        };
-
-        let title = match &self.job_id {
-            Some(id) => format!(" {} [{}] ", self.title, id),
-            None => format!(" {} ", self.title),
-        };
+        let border_color = if focused { ACCENT_CUSTOM } else { DIM_BORDER };
 
         let block = Block::default()
-            .title(title)
+            .title(format!(" {} ", self.title))
             .borders(Borders::ALL)
-            .border_type(BorderType::Rounded)
+            .border_type(if focused {
+                BorderType::Double
+            } else {
+                BorderType::Rounded
+            })
             .border_style(Style::default().fg(border_color));
 
         if self.job_id.is_none() {

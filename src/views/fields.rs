@@ -345,7 +345,7 @@ impl FieldSelector {
             }
         };
 
-        let full = format!("{} | r: Reset | Ctrl+S: Save | Esc: Close", hint);
+        let full = format!("{} | Ctrl+R: Reset | Ctrl+S: Save | Esc: Close", hint);
         let widget = Paragraph::new(full)
             .style(Style::default().fg(Color::DarkGray))
             .block(
@@ -369,7 +369,7 @@ impl FieldSelector {
             KeyCode::Char('s') if key.modifiers.contains(KeyModifiers::CONTROL) => {
                 return FieldAction::Save;
             }
-            KeyCode::Char('r') => {
+            KeyCode::Char('r') if key.modifiers.contains(KeyModifiers::CONTROL) => {
                 self.reset_to_defaults();
                 return FieldAction::Confirm;
             }

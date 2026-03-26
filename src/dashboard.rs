@@ -626,11 +626,12 @@ impl Dashboard {
                             self.flash(format!("{} contents copied", title), 3);
                         }
                     }
-                    FocusWidget::Sidebar => {
-                        self.focus = FocusWidget::Table;
-                    }
-                    FocusWidget::Table => {
-                        self.alive = false;
+                    FocusWidget::Sidebar | FocusWidget::Table => {
+                        self.field_sel = FieldSelector::new(
+                            self.visible_fields.clone(),
+                            self.sort_fields.clone(),
+                        );
+                        self.field_sel.visible = true;
                     }
                 }
                 return;
@@ -643,14 +644,8 @@ impl Dashboard {
                 self.cycle_focus_reverse();
                 return;
             }
-            (_, KeyCode::Char('w')) => {
+            (KeyModifiers::CONTROL, KeyCode::Char('w')) => {
                 self.widget_sel.visible = true;
-                return;
-            }
-            (_, KeyCode::Char('c')) if self.focus == FocusWidget::Table => {
-                self.field_sel =
-                    FieldSelector::new(self.visible_fields.clone(), self.sort_fields.clone());
-                self.field_sel.visible = true;
                 return;
             }
             _ => {}
@@ -679,14 +674,14 @@ impl Dashboard {
                 self.table.advance();
             }
             (_, KeyCode::Char(' ')) => self.table.flip_selection(),
-            (_, KeyCode::Char('a')) => {
+            (KeyModifiers::CONTROL, KeyCode::Char('a')) => {
                 if self.table.everything_marked() {
                     self.table.unmark_all();
                 } else {
                     self.table.mark_all();
                 }
             }
-            (_, KeyCode::Char('x')) => {
+            (KeyModifiers::CONTROL, KeyCode::Char('x')) => {
                 self.confirming_cancel = true;
             }
             _ => {}

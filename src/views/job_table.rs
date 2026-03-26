@@ -7,6 +7,7 @@ use ratatui::{
 
 use crate::backend::{Job, JobState};
 use crate::views::fields::{JobField, OrderedField, SortDirection};
+use crate::views::theme::{DIM_BORDER, ROW_HIGHLIGHT_BG};
 
 pub struct JobTable {
     pub tbl_state: TableState,
@@ -170,7 +171,7 @@ impl JobTable {
             };
 
             let sty = Style::default()
-                .fg(Color::Magenta)
+                .fg(Color::Rgb(200, 120, 255))
                 .add_modifier(Modifier::BOLD)
                 .add_modifier(Modifier::UNDERLINED);
 
@@ -186,7 +187,10 @@ impl JobTable {
             let tint = state_color(job.state);
 
             let row_style = if is_marked {
-                Style::default().fg(tint).add_modifier(Modifier::UNDERLINED)
+                Style::default()
+                    .fg(Color::Rgb(15, 12, 25))
+                    .bg(tint)
+                    .add_modifier(Modifier::BOLD)
             } else {
                 Style::default().fg(tint)
             };
@@ -251,20 +255,24 @@ impl JobTable {
             .block(
                 Block::default()
                     .borders(Borders::ALL)
-                    .border_type(BorderType::Rounded)
+                    .border_type(if focused {
+                        BorderType::Double
+                    } else {
+                        BorderType::Rounded
+                    })
                     .title(caption)
                     .border_style(Style::default().fg(if focused {
                         Color::Magenta
                     } else {
-                        Color::Rgb(80, 80, 110)
+                        DIM_BORDER
                     })),
             )
             .row_highlight_style(
                 Style::default()
                     .add_modifier(Modifier::BOLD)
-                    .bg(Color::Rgb(35, 25, 55)),
+                    .bg(ROW_HIGHLIGHT_BG),
             )
-            .highlight_symbol(" \u{25cf} ");
+            .highlight_symbol(" \u{25b8} ");
 
         frame.render_stateful_widget(table, area, &mut self.tbl_state);
     }

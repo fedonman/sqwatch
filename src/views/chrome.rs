@@ -45,10 +45,10 @@ pub fn build_frame(frame: &mut Frame, widgets: &VisibleWidgets) -> FrameLayout {
         (None, content)
     };
 
-    let visible_right = widgets.visible_right_widgets();
-    let total_right = visible_right.len();
+    let all_panels = widgets.visible_panel_widgets();
 
-    if total_right == 0 {
+    // No panel widgets: table uses all remaining space
+    if all_panels.is_empty() {
         return FrameLayout {
             titlebar,
             sidebar,
@@ -59,38 +59,38 @@ pub fn build_frame(frame: &mut Frame, widgets: &VisibleWidgets) -> FrameLayout {
         };
     }
 
-    // Split into panel widgets (right side, max 4) and overflow (under table)
-    let (panel_kinds, overflow_kinds) = if total_right <= 4 {
-        (visible_right.clone(), Vec::new())
-    } else {
-        (visible_right[..4].to_vec(), visible_right[4..].to_vec())
-    };
+    let total = all_panels.len();
 
-    let panel_count = panel_kinds.len();
+    // Right column holds the first N widgets (up to 3), overflow goes to left column.
+    let right_count = total.min(3);
+    let overflow_count = total - right_count;
 
-    // Split remaining 50/50 into left column (table) and right column (widget panel)
+    // Grid has `right_count` rows across both columns.
+    // Split remaining 50/50 into left column (table + overflow) and right column.
     let cols = Layout::default()
         .direction(Direction::Horizontal)
         .constraints([Constraint::Percentage(50), Constraint::Percentage(50)])
         .split(remaining);
     let (left_col, right_col) = (cols[0], cols[1]);
 
-    // Split right column equally among panel widgets
-    let right_constraints: Vec<Constraint> = (0..panel_count)
-        .map(|_| Constraint::Ratio(1, panel_count as u32))
+    // Split right column equally among its widgets
+    let right_constraints: Vec<Constraint> = (0..right_count)
+        .map(|_| Constraint::Ratio(1, right_count as u32))
         .collect();
     let right_parts = Layout::default()
         .direction(Direction::Vertical)
         .constraints(right_constraints)
         .split(right_col);
 
-    let right_widgets: Vec<(WidgetKind, Rect)> = panel_kinds
-        .into_iter()
+    // Right column: positions A, B, C (top to bottom)
+    let right_widgets: Vec<(WidgetKind, Rect)> = all_panels[..right_count]
+        .iter()
+        .cloned()
         .zip(right_parts.iter().copied())
         .collect();
 
     // No overflow: table uses the whole left column
-    if overflow_kinds.is_empty() {
+    if overflow_count == 0 {
         return FrameLayout {
             titlebar,
             sidebar,
@@ -101,27 +101,44 @@ pub fn build_frame(frame: &mut Frame, widgets: &VisibleWidgets) -> FrameLayout {
         };
     }
 
-    // Overflow: split left column into table (top) + bottom zone
-    let bottom_height = right_parts.iter().map(|r| r.height).min().unwrap_or(3);
-    let left_split = Layout::default()
-        .direction(Direction::Vertical)
-        .constraints([Constraint::Min(5), Constraint::Length(bottom_height)])
-        .split(left_col);
-    let table_rect = left_split[0];
-    let bottom_zone = left_split[1];
+    // Cap overflow so the table always keeps at least one row.
+    let overflow_count = overflow_count.min(right_count.saturating_sub(1));
 
-    let bottom_widgets = if overflow_kinds.len() == 1 {
-        vec![(overflow_kinds[0].clone(), bottom_zone)]
+    // Split left column into the same grid as the right column.
+    // Table spans the top rows, overflow widgets fill bottom rows.
+    let table_rows = right_count - overflow_count;
+    let left_constraints: Vec<Constraint> = (0..right_count)
+        .map(|_| Constraint::Ratio(1, right_count as u32))
+        .collect();
+    let left_parts = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints(left_constraints)
+        .split(left_col);
+
+    // Table spans the top rows
+    let table_rect = if table_rows == 1 {
+        left_parts[0]
     } else {
-        let halves = Layout::default()
-            .direction(Direction::Horizontal)
-            .constraints([Constraint::Percentage(50), Constraint::Percentage(50)])
-            .split(bottom_zone);
-        overflow_kinds
-            .into_iter()
-            .zip(halves.iter().copied())
-            .collect()
+        let first = left_parts[0];
+        let last = left_parts[table_rows - 1];
+        Rect {
+            x: first.x,
+            y: first.y,
+            width: first.width,
+            height: last.y + last.height - first.y,
+        }
     };
+
+    // Overflow widgets fill bottom rows of left column.
+    // Positions D, E (bottom to top): the last overflow widget sits at the
+    // bottom row, the second-to-last above it, etc.
+    let overflow = &all_panels[right_count..right_count + overflow_count];
+    let bottom_widgets: Vec<(WidgetKind, Rect)> = overflow
+        .iter()
+        .rev()
+        .zip(left_parts[table_rows..].iter().copied())
+        .map(|(kind, rect)| (kind.clone(), rect))
+        .collect();
 
     FrameLayout {
         titlebar,
@@ -215,20 +232,16 @@ pub fn render_statusbar(
         ("Esc", "Quit"),
         ("Tab", "Focus"),
         ("\u{2191}\u{2193}", "Navigation"),
-        ("w", "Widgets"),
+        ("Ctrl+W", "Widgets"),
     ];
 
     // Context-specific bindings per focused widget
     match focus {
         FocusWidget::Table => {
-            bindings.push(("c", "Columns"));
-            // bindings.push(("Space", "Mark"));
-            // bindings.push(("a", "Mark All"));
-            // bindings.push(("x", "Cancel"));
+            bindings.push(("Ctrl+C", "Columns"));
         }
         FocusWidget::Sidebar => {
             bindings.push(("Enter", "Edit/Toggle"));
-            bindings.push(("r", "Reset"));
             bindings.push(("Ctrl+S", "Save"));
         }
         FocusWidget::Script

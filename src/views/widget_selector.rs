@@ -12,7 +12,7 @@ use super::theme::{ACCENT, CHECKED_COLOR, DIM_BORDER, POPUP_BG, UNCHECKED_COLOR}
 
 const CUSTOM_COLOR: Color = Color::Rgb(180, 130, 255);
 const CUSTOM_DIM: Color = Color::Rgb(120, 100, 160);
-const MAX_RIGHT_WIDGETS: usize = 6;
+const MAX_RIGHT_SLOTS: usize = 3;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum WidgetKind {
@@ -27,7 +27,7 @@ impl WidgetKind {
     pub fn label<'a>(&self, custom_defs: &'a [CustomWidgetDef]) -> &'a str {
         match self {
             WidgetKind::Filters => "Filters",
-            WidgetKind::Script => "Execution Script",
+            WidgetKind::Script => "Script",
             WidgetKind::Stdout => "stdout",
             WidgetKind::Stderr => "stderr",
             WidgetKind::Custom(i) => custom_defs
@@ -98,18 +98,9 @@ impl VisibleWidgets {
         }
     }
 
-    /// Count of visible right-panel widgets (excludes the sidebar).
-    pub fn right_widget_count(&self) -> usize {
-        let builtin = [self.script, self.stdout, self.stderr]
-            .iter()
-            .filter(|&&v| v)
-            .count();
-        let custom = self.custom.iter().filter(|c| c.visible).count();
-        builtin + custom
-    }
-
-    /// Ordered list of visible right-panel widget kinds.
-    pub fn visible_right_widgets(&self) -> Vec<WidgetKind> {
+    /// Ordered list of all visible panel widget kinds
+    /// (script, stdout, stderr, then custom — in priority order).
+    pub fn visible_panel_widgets(&self) -> Vec<WidgetKind> {
         let mut out = Vec::new();
         if self.script {
             out.push(WidgetKind::Script);
@@ -126,6 +117,15 @@ impl VisibleWidgets {
             }
         }
         out
+    }
+
+    /// Whether another panel widget can be toggled on.
+    /// Right column holds up to MAX_RIGHT_SLOTS widgets, overflow fills the
+    /// left column below the table. The table must keep at least one row,
+    /// so total visible panels are capped at 2 * MAX_RIGHT_SLOTS - 1.
+    pub fn can_add_panel(&self) -> bool {
+        let total = self.visible_panel_widgets().len();
+        total < 2 * MAX_RIGHT_SLOTS - 1
     }
 
     /// Full ordered list for the widget selector (all items including hidden).
@@ -218,7 +218,7 @@ impl WidgetSelector {
                     // Enforce cap: only block toggling ON, not OFF
                     if !widgets.is_visible(kind)
                         && *kind != WidgetKind::Filters
-                        && widgets.right_widget_count() >= MAX_RIGHT_WIDGETS
+                        && !widgets.can_add_panel()
                     {
                         return WidgetSelectorAction::Noop;
                     }
@@ -228,14 +228,26 @@ impl WidgetSelector {
                     WidgetSelectorAction::Noop
                 }
             }
-            KeyCode::Char('a') => {
+            KeyCode::Char('a') if key.modifiers.contains(KeyModifiers::CONTROL) => {
                 self.adding = true;
                 self.add_phase = AddPhase::Title;
                 self.add_title_buf.clear();
                 self.add_filename_buf.clear();
                 WidgetSelectorAction::Noop
             }
-            KeyCode::Char('d') | KeyCode::Delete => {
+            KeyCode::Char('d') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+                if self.cursor < item_count
+                    && let WidgetKind::Custom(i) = &all_kinds[self.cursor]
+                {
+                    widgets.remove_custom(*i);
+                    if self.cursor > 0 && self.cursor >= item_count - 1 {
+                        self.cursor -= 1;
+                    }
+                    return WidgetSelectorAction::Changed;
+                }
+                WidgetSelectorAction::Noop
+            }
+            KeyCode::Delete => {
                 if self.cursor < item_count
                     && let WidgetKind::Custom(i) = &all_kinds[self.cursor]
                 {
@@ -273,7 +285,7 @@ impl WidgetSelector {
                         widgets.custom.push(CustomWidgetDef {
                             title: self.add_title_buf.trim().to_string(),
                             filename: self.add_filename_buf.trim().to_string(),
-                            visible: true,
+                            visible: widgets.can_add_panel(),
                         });
                         self.adding = false;
                         self.cursor = BUILTIN_ORDER.len() + widgets.custom.len() - 1;
@@ -378,7 +390,7 @@ impl WidgetSelector {
 
         lines.push(Line::raw(""));
 
-        let hint = " \u{2191}\u{2193}: Navigate | Enter: Toggle | a: Add | d: Delete | Ctrl+S: Save | Esc: Close";
+        let hint = " \u{2191}\u{2193}: Navigate | Enter: Toggle | Ctrl+A: Add | Ctrl+D/Del: Delete | Ctrl+S: Save | Esc: Close";
         lines.push(Line::from(Span::styled(
             hint,
             Style::default().fg(Color::DarkGray),

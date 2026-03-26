@@ -1,4 +1,4 @@
-use crossterm::event::{KeyCode, KeyEvent};
+use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use ratatui::{
     Frame,
     layout::{Position, Rect},
@@ -10,7 +10,7 @@ use regex::Regex;
 
 use crate::backend::{JobState, query::QueryParams};
 
-use super::theme::{ACCENT, CHECKED_COLOR, DIM_BORDER, UNCHECKED_COLOR};
+use super::theme::{ACCENT_SIDEBAR, CHECKED_COLOR, DIM_BORDER, UNCHECKED_COLOR};
 
 const HEADER_COLOR: Color = Color::Rgb(200, 170, 240);
 const INPUT_COLOR: Color = Color::Rgb(220, 200, 130);
@@ -226,7 +226,7 @@ impl FilterTree {
                     FilterTreeAction::Noop
                 }
             }
-            KeyCode::Char('r') => {
+            KeyCode::Char('r') if key.modifiers.contains(KeyModifiers::CONTROL) => {
                 params.statuses.clear();
                 params.partitions.clear();
                 params.qos.clear();
@@ -375,11 +375,15 @@ impl FilterTree {
         known_qos: &[String],
         known_nodes: &[String],
     ) {
-        let border_color = if focused { ACCENT } else { DIM_BORDER };
+        let border_color = if focused { ACCENT_SIDEBAR } else { DIM_BORDER };
         let block = Block::default()
             .title(" Filters ")
             .borders(Borders::ALL)
-            .border_type(BorderType::Rounded)
+            .border_type(if focused {
+                BorderType::Double
+            } else {
+                BorderType::Rounded
+            })
             .border_style(Style::default().fg(border_color));
 
         let inner = block.inner(area);
@@ -523,7 +527,7 @@ impl FilterTree {
             if valid == Some(false) {
                 INVALID_COLOR
             } else {
-                ACCENT
+                ACCENT_SIDEBAR
             }
         } else if valid == Some(false) {
             INVALID_COLOR
