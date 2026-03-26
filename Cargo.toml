@@ -1,6 +1,6 @@
 [package]
 name = "sqwatch"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2024"
 description = "A terminal UI for watching and managing SLURM job queues."
 authors = ["Vyron Vasileiadis <hi@fedonman.com>"]
@@ -8,6 +8,9 @@ repository = "https://github.com/fedonman/sqwatch"
 readme = "README.md"
 license = "Apache-2.0"
 rust-version = "1.90"
+include = [
+    "**/*.rs",
+]
 
 [dependencies]
 crossterm = "0.29.0"
