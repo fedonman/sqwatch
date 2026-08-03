@@ -1,6 +1,6 @@
 use std::thread;
 
-use crossbeam::channel::{Receiver, Sender, unbounded};
+use crossbeam::channel::{Receiver, Sender, TryRecvError, unbounded};
 
 use crate::backend::Job;
 use crate::backend::query::{QueryParams, fetch_jobs};
@@ -21,10 +21,16 @@ impl JobFetcher {
         let (res_tx, res_rx) = unbounded::<Result<Vec<Job>, String>>();
 
         thread::spawn(move || {
-            let rt = tokio::runtime::Builder::new_current_thread()
+            let rt = match tokio::runtime::Builder::new_current_thread()
                 .enable_all()
                 .build()
-                .expect("tokio runtime for job fetcher");
+            {
+                Ok(rt) => rt,
+                Err(e) => {
+                    let _ = res_tx.send(Err(format!("job fetch worker failed to start: {}", e)));
+                    return;
+                }
+            };
 
             while let Ok(mut params) = req_rx.recv() {
                 // Drain queued requests, keep only the latest
@@ -56,7 +62,11 @@ impl JobFetcher {
                 self.in_flight = false;
                 Some(result)
             }
-            Err(_) => None,
+            Err(TryRecvError::Empty) => None,
+            Err(TryRecvError::Disconnected) => {
+                self.in_flight = false;
+                Some(Err("job fetch worker stopped".to_string()))
+            }
         }
     }
 }

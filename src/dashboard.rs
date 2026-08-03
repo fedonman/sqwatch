@@ -499,8 +499,17 @@ impl Dashboard {
     // ── Input handling ───────────────────────────────────────
 
     fn process_input(&mut self) -> Result<()> {
-        // Block until the first event arrives.
-        let first = self.input.rx.recv()?;
+        use std::sync::mpsc::RecvTimeoutError;
+
+        // Wait for the next event, but time out so a dead input thread (a
+        // dropped sender) is detected instead of blocking the UI forever.
+        let first = match self.input.rx.recv_timeout(Duration::from_millis(500)) {
+            Ok(sig) => sig,
+            Err(RecvTimeoutError::Timeout) => return Ok(()),
+            Err(RecvTimeoutError::Disconnected) => {
+                color_eyre::eyre::bail!("input worker thread stopped unexpectedly");
+            }
+        };
 
         // Drain every additional pending event so stale timers that
         // accumulated while the terminal was unfocused are collapsed
