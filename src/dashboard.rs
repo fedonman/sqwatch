@@ -4,8 +4,8 @@ use crossterm::event::{KeyCode, KeyEvent, KeyEventKind, KeyModifiers, MouseEvent
 use ratatui::{
     Frame,
     layout::Rect,
-    style::{Color, Style},
-    text::Line,
+    style::{Color, Modifier, Style},
+    text::{Line, Span},
     widgets::{Block, Borders, Clear, Paragraph},
 };
 use std::time::{Duration, Instant};
@@ -75,6 +75,7 @@ pub struct Dashboard {
     pub sort_fields: Vec<OrderedField>,
     pub login_user: String,
     confirming_cancel: bool,
+    show_help: bool,
     job_detail_resolver: JobDetailResolver,
     job_fetcher: JobFetcher,
     pending_filter_apply: bool,
@@ -161,6 +162,7 @@ impl Dashboard {
             sort_fields,
             login_user: std::env::var("USER").unwrap_or_else(|_| "unknown".to_string()),
             confirming_cancel: false,
+            show_help: false,
             job_detail_resolver: JobDetailResolver::new(),
             job_fetcher: JobFetcher::new(),
             pending_filter_apply: false,
@@ -382,6 +384,11 @@ impl Dashboard {
             let r = popup_rect(frame.area(), 45, 25);
             self.draw_cancel_confirm(frame, r);
         }
+
+        if self.show_help {
+            let r = popup_rect(frame.area(), 60, 85);
+            self.draw_help(frame, r);
+        }
     }
 
     fn render_widget_by_kind(&mut self, frame: &mut Frame, kind: &WidgetKind, area: Rect) {
@@ -514,6 +521,20 @@ impl Dashboard {
         frame.render_widget(widget, area);
     }
 
+    fn draw_help(&self, frame: &mut Frame, area: Rect) {
+        frame.render_widget(Clear, area);
+
+        let block = Block::default()
+            .title(Line::from(" \u{25c6} Keybindings \u{25c6} ").centered())
+            .borders(Borders::ALL)
+            .border_type(ratatui::widgets::BorderType::Rounded)
+            .border_style(Style::default().fg(Color::Rgb(200, 120, 255)))
+            .style(Style::default().bg(Color::Rgb(15, 15, 30)));
+
+        let widget = Paragraph::new(help_lines()).block(block);
+        frame.render_widget(widget, area);
+    }
+
     // ── Input handling ───────────────────────────────────────
 
     fn process_input(&mut self) -> Result<()> {
@@ -556,6 +577,12 @@ impl Dashboard {
     }
 
     fn on_keypress(&mut self, key: KeyEvent) {
+        // ── Help overlay (modal, any key dismisses) ──
+        if self.show_help {
+            self.show_help = false;
+            return;
+        }
+
         // ── Popup-level dispatch (highest priority) ──
         if self.confirming_cancel {
             match key.code {
@@ -678,6 +705,10 @@ impl Dashboard {
             }
             (_, KeyCode::Char('-')) | (_, KeyCode::Char('_')) => {
                 self.adjust_refresh(-1);
+                return;
+            }
+            (_, KeyCode::Char('?')) => {
+                self.show_help = true;
                 return;
             }
             _ => {}
@@ -1020,4 +1051,59 @@ impl Dashboard {
             }
         }
     }
+}
+
+/// Build the keybinding reference shown in the help overlay.
+fn help_lines() -> Vec<Line<'static>> {
+    let header = |t: &'static str| {
+        Line::from(Span::styled(
+            t,
+            Style::default()
+                .fg(Color::Rgb(200, 170, 240))
+                .add_modifier(Modifier::BOLD),
+        ))
+    };
+    let row = |k: &'static str, d: &'static str| {
+        Line::from(vec![
+            Span::styled(
+                format!("  {:<18}", k),
+                Style::default().fg(Color::Rgb(120, 200, 255)),
+            ),
+            Span::styled(d, Style::default().fg(Color::Rgb(200, 200, 210))),
+        ])
+    };
+
+    vec![
+        Line::raw(""),
+        header("  Global"),
+        row("Tab / Shift+Tab", "Cycle focus between panels"),
+        row("Ctrl+W", "Widget layout"),
+        row("+ / -", "Refresh interval"),
+        row("?", "Toggle this help"),
+        row("Esc", "Back to table, or quit"),
+        Line::raw(""),
+        header("  Job table"),
+        row("Up / Down", "Navigate jobs"),
+        row("Space", "Mark / unmark job"),
+        row("Ctrl+A", "Select / deselect all"),
+        row("Ctrl+X", "Cancel selected jobs"),
+        row("Ctrl+C", "Column configuration"),
+        Line::raw(""),
+        header("  Log / script panels"),
+        row("Up/Dn PgUp/PgDn", "Scroll"),
+        row("Ctrl+U / Ctrl+D", "Page up / down"),
+        row("f / End / Home", "Follow / jump to bottom / top"),
+        row("Shift+Up/Down", "Switch to prev / next job"),
+        row("Ctrl+C", "Copy panel contents"),
+        Line::raw(""),
+        header("  Filter sidebar"),
+        row("Up / Down", "Navigate"),
+        row("Enter", "Edit field / toggle item"),
+        row("Ctrl+S", "Save filters"),
+        Line::raw(""),
+        Line::from(Span::styled(
+            "  Press any key to close",
+            Style::default().fg(Color::DarkGray),
+        )),
+    ]
 }
