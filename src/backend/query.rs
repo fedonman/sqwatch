@@ -197,3 +197,53 @@ fn decode_output(output: &Output, fmt: &str) -> Result<Vec<Job>> {
 
     Ok(jobs)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::backend::JobState;
+
+    #[test]
+    fn build_args_defaults_to_all_states() {
+        let args = QueryParams::default().build_args();
+        assert!(args.contains(&"--all".to_string()));
+        assert!(args.contains(&"--noheader".to_string()));
+        let i = args.iter().position(|a| a == "--states").unwrap();
+        assert_eq!(args[i + 1], "all");
+    }
+
+    #[test]
+    fn build_args_joins_states_and_partitions() {
+        let p = QueryParams {
+            statuses: vec![JobState::Pending, JobState::Running],
+            partitions: vec!["gpu".into(), "cpu".into()],
+            ..QueryParams::default()
+        };
+        let args = p.build_args();
+        let si = args.iter().position(|a| a == "--states").unwrap();
+        assert_eq!(args[si + 1], "PENDING,RUNNING");
+        let pi = args.iter().position(|a| a == "--partition").unwrap();
+        assert_eq!(args[pi + 1], "gpu,cpu");
+    }
+
+    #[test]
+    fn build_args_prefixes_descending_sort_with_dash() {
+        let p = QueryParams {
+            ordering: vec![("P".into(), false), ("i".into(), true)],
+            ..QueryParams::default()
+        };
+        let args = p.build_args();
+        let si = args.iter().position(|a| a == "--sort").unwrap();
+        assert_eq!(args[si + 1], "-P,i");
+    }
+
+    #[test]
+    fn is_valid_format_requires_percent_prefixed_columns() {
+        let mut p = QueryParams::default();
+        assert!(p.is_valid_format());
+        p.fmt = ["%i", "bad"].join(FIELD_SEP);
+        assert!(!p.is_valid_format());
+        p.fmt = String::new();
+        assert!(!p.is_valid_format());
+    }
+}

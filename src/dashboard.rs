@@ -1107,3 +1107,50 @@ fn help_lines() -> Vec<Line<'static>> {
         )),
     ]
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::backend::Job;
+
+    fn job_with_user(user: &str) -> Job {
+        Job {
+            user: user.to_string(),
+            ..Job::default()
+        }
+    }
+
+    #[test]
+    fn regex_filter_retains_matching_rows() {
+        let mut jobs = vec![
+            job_with_user("alice"),
+            job_with_user("bob"),
+            job_with_user("alba"),
+        ];
+        let stat = Dashboard::apply_regex_filter(&mut jobs, "^al", |j| &j.user).unwrap();
+        assert_eq!(jobs.len(), 2);
+        assert!(stat.is_some());
+    }
+
+    #[test]
+    fn regex_filter_reports_none_when_nothing_removed() {
+        let mut jobs = vec![job_with_user("alice"), job_with_user("alba")];
+        let stat = Dashboard::apply_regex_filter(&mut jobs, "^al", |j| &j.user).unwrap();
+        assert_eq!(jobs.len(), 2);
+        assert!(stat.is_none());
+    }
+
+    #[test]
+    fn regex_filter_empty_pattern_is_a_noop() {
+        let mut jobs = vec![job_with_user("alice")];
+        let stat = Dashboard::apply_regex_filter(&mut jobs, "", |j| &j.user).unwrap();
+        assert!(stat.is_none());
+        assert_eq!(jobs.len(), 1);
+    }
+
+    #[test]
+    fn regex_filter_errors_on_invalid_pattern() {
+        let mut jobs = vec![job_with_user("alice")];
+        assert!(Dashboard::apply_regex_filter(&mut jobs, "[", |j| &j.user).is_err());
+    }
+}
