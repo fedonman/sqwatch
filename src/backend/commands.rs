@@ -140,19 +140,15 @@ pub async fn list_qos() -> Vec<String> {
     )
     .await
     {
-        Ok(o) => o,
-        Err(_) => return vec!["normal".into(), "huge".into()],
+        Ok(o) if o.status.success() => o,
+        // No accounting DB / QoS on this cluster: show an empty list rather
+        // than inventing site-specific names that don't exist here.
+        _ => return Vec::new(),
     };
 
-    let items: Vec<String> = String::from_utf8_lossy(&out.stdout)
+    String::from_utf8_lossy(&out.stdout)
         .lines()
         .map(|l| l.trim().to_string())
         .filter(|l| !l.is_empty())
-        .collect();
-
-    if items.is_empty() {
-        vec!["normal".into(), "huge".into()]
-    } else {
-        items
-    }
+        .collect()
 }
