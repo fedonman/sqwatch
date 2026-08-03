@@ -949,7 +949,10 @@ impl Dashboard {
         self.refresh_secs = new;
         match save_settings(&SavedSettings { refresh_secs: new }) {
             Ok(_) => self.flash(format!("Refresh interval: {}s", new), 3),
-            Err(e) => self.flash(format!("Refresh interval: {}s (save failed: {})", new, e), 3),
+            Err(e) => self.flash(
+                format!("Refresh interval: {}s (save failed: {})", new, e),
+                3,
+            ),
         }
     }
 

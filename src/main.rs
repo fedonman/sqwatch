@@ -13,7 +13,12 @@ use sqwatch::dashboard::Dashboard;
 /// Restore the terminal to its normal state. Safe to call more than once.
 fn restore_terminal() {
     let _ = disable_raw_mode();
-    let _ = execute!(io::stdout(), LeaveAlternateScreen, DisableMouseCapture, Show);
+    let _ = execute!(
+        io::stdout(),
+        LeaveAlternateScreen,
+        DisableMouseCapture,
+        Show
+    );
 }
 
 /// Restores the terminal when dropped, so a normal return, an error, or a
