@@ -182,6 +182,7 @@ fn decode_output(output: &Output, fmt: &str) -> Result<Vec<Job>> {
                 "%V" => job.submit_time = Some(val),
                 "%S" => job.start_time = Some(val),
                 "%e" => job.end_time = Some(val),
+                "%R" => job.reason = Some(val),
                 _ => {}
             }
         }
