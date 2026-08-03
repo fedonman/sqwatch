@@ -93,6 +93,19 @@ impl Dashboard {
             saved.apply_to(&mut params);
         }
 
+        // Drop any saved regex that no longer compiles so the runtime filter
+        // path only ever sees valid patterns (validated once, here).
+        if let Some(p) = &params.user
+            && regex::Regex::new(p).is_err()
+        {
+            params.user = None;
+        }
+        if let Some(p) = &params.name_pattern
+            && regex::Regex::new(p).is_err()
+        {
+            params.name_pattern = None;
+        }
+
         let known_partitions = rt.block_on(list_partitions());
         let known_qos = rt.block_on(list_qos());
         let known_nodes = rt.block_on(list_nodes());
@@ -182,21 +195,7 @@ impl Dashboard {
         let mut stats = Vec::new();
         let total = jobs.len();
 
-        if let Some(ref pat) = self.params.user {
-            match Self::apply_regex_filter(&mut jobs, pat, |j| &j.user) {
-                Ok(Some(stat)) => stats.push(format!("user: {}", stat)),
-                Ok(None) => {}
-                Err(e) => self.flash(format!("Invalid user regex pattern: {}", e), 3),
-            }
-        }
-
-        if let Some(ref pat) = self.params.name_pattern {
-            match Self::apply_regex_filter(&mut jobs, pat, |j| &j.name) {
-                Ok(Some(stat)) => stats.push(format!("name: {}", stat)),
-                Ok(None) => {}
-                Err(e) => self.flash(format!("Invalid name regex pattern: {}", e), 3),
-            }
-        }
+        stats.extend(self.run_regex_filters(&mut jobs));
 
         if !stats.is_empty() {
             let remaining = jobs.len();
@@ -234,21 +233,7 @@ impl Dashboard {
         let mut stats = Vec::new();
         let total = jobs.len();
 
-        if let Some(ref pat) = self.params.user {
-            match Self::apply_regex_filter(&mut jobs, pat, |j| &j.user) {
-                Ok(Some(stat)) => stats.push(format!("user: {}", stat)),
-                Ok(None) => {}
-                Err(e) => self.flash(format!("Invalid user regex pattern: {}", e), 3),
-            }
-        }
-
-        if let Some(ref pat) = self.params.name_pattern {
-            match Self::apply_regex_filter(&mut jobs, pat, |j| &j.name) {
-                Ok(Some(stat)) => stats.push(format!("name: {}", stat)),
-                Ok(None) => {}
-                Err(e) => self.flash(format!("Invalid name regex pattern: {}", e), 3),
-            }
-        }
+        stats.extend(self.run_regex_filters(&mut jobs));
 
         if self.pending_filter_apply {
             self.pending_filter_apply = false;
@@ -307,6 +292,28 @@ impl Dashboard {
         } else {
             Ok(None)
         }
+    }
+
+    /// Apply the user and job-name regex filters to `jobs`, returning a
+    /// stat string per filter that removed rows. Shared by the synchronous
+    /// startup reload and the async fetch path.
+    fn run_regex_filters(&mut self, jobs: &mut Vec<Job>) -> Vec<String> {
+        let mut stats = Vec::new();
+        if let Some(pat) = self.params.user.clone() {
+            match Self::apply_regex_filter(jobs, &pat, |j| &j.user) {
+                Ok(Some(stat)) => stats.push(format!("user: {}", stat)),
+                Ok(None) => {}
+                Err(e) => self.flash(format!("Invalid user regex pattern: {}", e), 3),
+            }
+        }
+        if let Some(pat) = self.params.name_pattern.clone() {
+            match Self::apply_regex_filter(jobs, &pat, |j| &j.name) {
+                Ok(Some(stat)) => stats.push(format!("name: {}", stat)),
+                Ok(None) => {}
+                Err(e) => self.flash(format!("Invalid name regex pattern: {}", e), 3),
+            }
+        }
+        stats
     }
 
     // ── Drawing ──────────────────────────────────────────────
@@ -652,11 +659,11 @@ impl Dashboard {
                 return;
             }
             (_, KeyCode::Tab) => {
-                self.cycle_focus();
+                self.cycle_focus(true);
                 return;
             }
-            (KeyModifiers::SHIFT, KeyCode::BackTab) => {
-                self.cycle_focus_reverse();
+            (_, KeyCode::BackTab) => {
+                self.cycle_focus(false);
                 return;
             }
             (KeyModifiers::CONTROL, KeyCode::Char('w')) => {
@@ -771,26 +778,16 @@ impl Dashboard {
         items
     }
 
-    fn cycle_focus(&mut self) {
+    fn cycle_focus(&mut self, forward: bool) {
         let items = self.focusable_widgets();
         if items.len() <= 1 {
             return;
         }
         let current = items.iter().position(|p| *p == self.focus).unwrap_or(0);
-        let next = (current + 1) % items.len();
-        self.focus = items[next].clone();
-    }
-
-    fn cycle_focus_reverse(&mut self) {
-        let items = self.focusable_widgets();
-        if items.len() <= 1 {
-            return;
-        }
-        let current = items.iter().position(|p| *p == self.focus).unwrap_or(0);
-        let next = if current == 0 {
-            items.len() - 1
+        let next = if forward {
+            (current + 1) % items.len()
         } else {
-            current - 1
+            (current + items.len() - 1) % items.len()
         };
         self.focus = items[next].clone();
     }
