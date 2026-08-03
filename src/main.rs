@@ -8,12 +8,7 @@ use crossterm::{
 use ratatui::{Terminal, backend::CrosstermBackend};
 use std::io;
 
-mod backend;
-mod core;
-mod dashboard;
-mod views;
-
-use dashboard::Dashboard;
+use sqwatch::dashboard::Dashboard;
 
 /// Restore the terminal to its normal state. Safe to call more than once.
 fn restore_terminal() {

@@ -15,6 +15,12 @@ pub struct JobFetcher {
     pub in_flight: bool,
 }
 
+impl Default for JobFetcher {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl JobFetcher {
     pub fn new() -> Self {
         let (req_tx, req_rx) = unbounded::<QueryParams>();

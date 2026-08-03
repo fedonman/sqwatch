@@ -171,6 +171,12 @@ pub struct WidgetSelector {
     add_filename_buf: String,
 }
 
+impl Default for WidgetSelector {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl WidgetSelector {
     pub fn new() -> Self {
         Self {

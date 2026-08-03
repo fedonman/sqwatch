@@ -21,6 +21,12 @@ pub struct JobDetailResolver {
     order: VecDeque<String>,
 }
 
+impl Default for JobDetailResolver {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl JobDetailResolver {
     pub fn new() -> Self {
         let (req_tx, req_rx) = unbounded::<String>();

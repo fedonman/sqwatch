@@ -63,6 +63,12 @@ pub struct FilterTree {
     name_ok: Option<bool>,
 }
 
+impl Default for FilterTree {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl FilterTree {
     pub fn new() -> Self {
         Self {

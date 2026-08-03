@@ -28,6 +28,12 @@ pub struct ScriptWidget {
     loading: bool,
 }
 
+impl Default for ScriptWidget {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl ScriptWidget {
     pub fn new() -> Self {
         Self {

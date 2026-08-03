@@ -82,7 +82,7 @@ pub fn save_filters(params: &QueryParams) -> Result<(), String> {
 // --- Column settings persistence ---
 
 #[derive(Debug, Serialize, Deserialize)]
-pub(crate) struct SavedSort {
+pub struct SavedSort {
     field: String,
     direction: String,
 }
