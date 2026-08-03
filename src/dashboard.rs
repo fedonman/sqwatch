@@ -19,7 +19,8 @@ use crate::{
     },
     core::{
         config::{
-            load_columns, load_filters, load_layout, save_columns, save_filters, save_layout,
+            SavedSettings, load_columns, load_filters, load_layout, load_settings, save_columns,
+            save_filters, save_layout, save_settings,
         },
         input::{InputConfig, InputLoop, Signal},
         job_detail::JobDetailResolver,
@@ -121,6 +122,10 @@ impl Dashboard {
             )
         });
 
+        let refresh_secs = load_settings()
+            .map(|s| s.refresh_secs.clamp(1, 60))
+            .unwrap_or(3);
+
         let visible_widgets = load_layout().unwrap_or_default();
         let custom_widgets = visible_widgets
             .custom
@@ -147,7 +152,7 @@ impl Dashboard {
             focus: FocusWidget::Table,
             notice: String::new(),
             notice_expires: None,
-            refresh_secs: 1,
+            refresh_secs,
             known_partitions,
             known_qos,
             known_nodes,
@@ -667,6 +672,14 @@ impl Dashboard {
                 self.widget_sel.visible = true;
                 return;
             }
+            (_, KeyCode::Char('+')) | (_, KeyCode::Char('=')) => {
+                self.adjust_refresh(1);
+                return;
+            }
+            (_, KeyCode::Char('-')) | (_, KeyCode::Char('_')) => {
+                self.adjust_refresh(-1);
+                return;
+            }
             _ => {}
         }
 
@@ -893,6 +906,19 @@ impl Dashboard {
             self.flash(format!("{} copied", label), 3);
         } else {
             self.flash("Clipboard copy failed".into(), 3);
+        }
+    }
+
+    /// Adjust the auto-refresh interval (clamped to 1–60s) and persist it.
+    fn adjust_refresh(&mut self, delta: i64) {
+        let new = (self.refresh_secs as i64 + delta).clamp(1, 60) as u64;
+        if new == self.refresh_secs {
+            return;
+        }
+        self.refresh_secs = new;
+        match save_settings(&SavedSettings { refresh_secs: new }) {
+            Ok(_) => self.flash(format!("Refresh interval: {}s", new), 3),
+            Err(e) => self.flash(format!("Refresh interval: {}s (save failed: {})", new, e), 3),
         }
     }
 
