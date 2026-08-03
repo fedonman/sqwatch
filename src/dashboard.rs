@@ -171,7 +171,13 @@ impl Dashboard {
         self.rebuild_format();
 
         let p = self.params.clone();
-        let mut jobs = self.rt.block_on(fetch_jobs(&p))?;
+        let mut jobs = match self.rt.block_on(fetch_jobs(&p)) {
+            Ok(jobs) => jobs,
+            Err(e) => {
+                self.flash(format!("squeue failed: {}", e), 10);
+                Vec::new()
+            }
+        };
 
         let mut stats = Vec::new();
         let total = jobs.len();

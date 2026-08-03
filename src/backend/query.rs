@@ -1,6 +1,5 @@
 use async_process::{Command, Output};
 use color_eyre::Result;
-use color_eyre::eyre::Error;
 use std::str::FromStr;
 
 use super::Job;
@@ -106,16 +105,25 @@ impl QueryParams {
 }
 
 pub async fn fetch_jobs(params: &QueryParams) -> Result<Vec<Job>> {
-    let args = params.build_args();
-
     if !params.is_valid_format() {
-        return Ok(Vec::new());
+        color_eyre::eyre::bail!("internal error: invalid squeue format string");
     }
 
-    let output = match Command::new("squeue").args(&args).output().await {
-        Ok(o) => o,
-        Err(e) => return Err(Error::new(e)),
-    };
+    let args = params.build_args();
+    let output = Command::new("squeue")
+        .args(&args)
+        .output()
+        .await
+        .map_err(|e| color_eyre::eyre::eyre!("failed to run squeue: {}", e))?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        let detail = stderr.trim();
+        if detail.is_empty() {
+            color_eyre::eyre::bail!("squeue exited with {}", output.status);
+        }
+        color_eyre::eyre::bail!("squeue: {}", detail);
+    }
 
     decode_output(&output, &params.fmt)
 }
