@@ -35,6 +35,8 @@ pub struct CustomOutputWidget {
     data_rx: Option<Receiver<Result<String, MonitorError>>>,
     fstate: FileState,
     display_content: String,
+    /// When true, the view stays pinned to the tail as new content arrives.
+    follow: bool,
 }
 
 impl CustomOutputWidget {
@@ -52,6 +54,7 @@ impl CustomOutputWidget {
             data_rx: None,
             fstate: FileState::Missing,
             display_content: String::new(),
+            follow: true,
         }
     }
 
@@ -61,6 +64,7 @@ impl CustomOutputWidget {
         self.content.clear();
         self.scroll_pos = 0;
         self.fstate = FileState::Missing;
+        self.follow = true;
 
         if self.monitor.is_none() {
             let (tx, rx) = unbounded();
@@ -131,12 +135,14 @@ impl CustomOutputWidget {
         self.content.clear();
         self.scroll_pos = 0;
         self.fstate = FileState::Missing;
+        self.follow = true;
         if let Some(m) = &mut self.monitor {
             m.set_file_path(None);
         }
     }
 
     pub fn scroll_up(&mut self) {
+        self.follow = false;
         self.scroll_pos = self.scroll_pos.saturating_sub(1);
     }
 
@@ -144,21 +150,29 @@ impl CustomOutputWidget {
         if self.scroll_pos < self.max_scroll {
             self.scroll_pos += 1;
         }
+        self.follow = self.scroll_pos >= self.max_scroll;
     }
 
     pub fn page_up(&mut self) {
+        self.follow = false;
         self.scroll_pos = self.scroll_pos.saturating_sub(10);
     }
 
     pub fn page_down(&mut self) {
         self.scroll_pos = (self.scroll_pos + 10).min(self.max_scroll);
+        self.follow = self.scroll_pos >= self.max_scroll;
     }
 
     pub fn render_inline(&mut self, frame: &mut Frame, area: Rect, focused: bool) {
         let border_color = if focused { ACCENT_CUSTOM } else { DIM_BORDER };
 
+        let title = if self.job_id.is_some() && self.follow {
+            format!(" {} [follow] ", self.title)
+        } else {
+            format!(" {} ", self.title)
+        };
         let block = Block::default()
-            .title(format!(" {} ", self.title))
+            .title(title)
             .borders(Borders::ALL)
             .border_type(if focused {
                 BorderType::Double
@@ -185,18 +199,20 @@ impl CustomOutputWidget {
             _ => self.display_content.clone(),
         };
 
-        let widget = Paragraph::new(display_text)
+        let para = Paragraph::new(display_text)
             .style(Style::default().fg(Color::Rgb(200, 200, 210)))
             .block(block)
-            .wrap(Wrap { trim: false })
-            .scroll((self.scroll_pos as u16, 0));
+            .wrap(Wrap { trim: false });
 
         let inner_width = area.width.saturating_sub(2);
         let inner_height = area.height.saturating_sub(2) as usize;
-        let total_lines = widget.line_count(inner_width);
+        let total_lines = para.line_count(inner_width);
         self.max_scroll = total_lines.saturating_sub(inner_height);
+        if self.follow {
+            self.scroll_pos = self.max_scroll;
+        }
 
-        frame.render_widget(widget, area);
+        frame.render_widget(para.scroll((self.scroll_pos as u16, 0)), area);
     }
 
     pub fn handle_key(&mut self, key: KeyEvent) {
@@ -207,6 +223,12 @@ impl CustomOutputWidget {
             (_, KeyCode::PageDown) | (KeyModifiers::CONTROL, KeyCode::Char('d')) => {
                 self.page_down()
             }
+            (_, KeyCode::Home) => {
+                self.follow = false;
+                self.scroll_pos = 0;
+            }
+            (_, KeyCode::End) => self.follow = true,
+            (_, KeyCode::Char('f')) => self.follow = !self.follow,
             _ => {}
         }
     }
