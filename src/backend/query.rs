@@ -5,6 +5,11 @@ use std::str::FromStr;
 use super::Job;
 use super::JobState;
 
+/// Field separator embedded in the `squeue --format` string. A control
+/// character (ASCII Unit Separator) is used instead of `|` so job names
+/// that contain `|` cannot corrupt column parsing.
+pub const FIELD_SEP: &str = "\u{1f}";
+
 #[derive(Debug, Clone)]
 pub struct QueryParams {
     pub user: Option<String>,
@@ -27,7 +32,7 @@ impl Default for QueryParams {
             qos: Vec::new(),
             name_pattern: None,
             nodes: Vec::new(),
-            fmt: "%i|%j|%u|%T|%M|%N|%C|%m|%P|%q".to_string(),
+            fmt: ["%i", "%j", "%u", "%T", "%M", "%N", "%C", "%m", "%P", "%q"].join(FIELD_SEP),
             ordering: vec![("i".to_string(), true)],
         }
     }
@@ -35,7 +40,7 @@ impl Default for QueryParams {
 
 impl QueryParams {
     pub fn columns(&self) -> Vec<&str> {
-        self.fmt.split('|').collect()
+        self.fmt.split(FIELD_SEP).collect()
     }
 
     pub fn is_valid_format(&self) -> bool {
@@ -135,7 +140,7 @@ fn decode_output(output: &Output, fmt: &str) -> Result<Vec<Job>> {
         return Ok(Vec::new());
     }
 
-    let col_codes: Vec<&str> = fmt.split('|').collect();
+    let col_codes: Vec<&str> = fmt.split(FIELD_SEP).collect();
     if col_codes.is_empty() {
         return Ok(Vec::new());
     }
@@ -147,7 +152,7 @@ fn decode_output(output: &Output, fmt: &str) -> Result<Vec<Job>> {
             continue;
         }
 
-        let fields: Vec<&str> = line.split('|').collect();
+        let fields: Vec<&str> = line.split(FIELD_SEP).collect();
         if fields.is_empty() || fields.len() < col_codes.len() / 2 {
             continue;
         }

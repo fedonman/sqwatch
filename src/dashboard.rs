@@ -15,7 +15,7 @@ use crate::{
     backend::{
         Job, JobState,
         commands::{cancel_jobs, check_slurm_available, list_nodes, list_partitions, list_qos},
-        query::{QueryParams, fetch_jobs},
+        query::{FIELD_SEP, QueryParams, fetch_jobs},
     },
     core::{
         config::{
@@ -948,7 +948,7 @@ impl Dashboard {
             codes.push("%Z");
         }
 
-        self.params.fmt = codes.join("|");
+        self.params.fmt = codes.join(FIELD_SEP);
 
         self.params.ordering.clear();
         if !self.sort_fields.is_empty() {
