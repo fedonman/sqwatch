@@ -630,22 +630,19 @@ impl Dashboard {
             (KeyModifiers::CONTROL, KeyCode::Char('c')) => {
                 match &self.focus {
                     FocusWidget::Script => {
-                        self.copy_to_clipboard(&self.script.body.clone());
-                        self.flash("Script contents copied".into(), 3);
+                        self.copy_and_flash(&self.script.body.clone(), "Script contents");
                     }
                     FocusWidget::Stdout => {
-                        self.copy_to_clipboard(&self.stdout_widget.content.clone());
-                        self.flash("Stdout contents copied".into(), 3);
+                        self.copy_and_flash(&self.stdout_widget.content.clone(), "Stdout contents");
                     }
                     FocusWidget::Stderr => {
-                        self.copy_to_clipboard(&self.stderr_widget.content.clone());
-                        self.flash("Stderr contents copied".into(), 3);
+                        self.copy_and_flash(&self.stderr_widget.content.clone(), "Stderr contents");
                     }
                     FocusWidget::Custom(i) => {
                         if let Some(cw) = self.custom_widgets.get(*i) {
                             let title = cw.title.clone();
-                            self.copy_to_clipboard(&cw.content.clone());
-                            self.flash(format!("{} contents copied", title), 3);
+                            let content = cw.content.clone();
+                            self.copy_and_flash(&content, &format!("{} contents", title));
                         }
                     }
                     FocusWidget::Sidebar | FocusWidget::Table => {
@@ -879,11 +876,24 @@ impl Dashboard {
 
     /// Copy text to the system clipboard via the OSC 52 escape sequence.
     /// Works over SSH and inside tmux without requiring X11/Wayland.
-    fn copy_to_clipboard(&self, text: &str) {
+    /// Returns whether the escape sequence was actually written.
+    fn copy_to_clipboard(&self, text: &str) -> bool {
+        use std::io::Write;
         let encoded = BASE64.encode(text);
         let seq = format!("\x1b]52;c;{}\x07", encoded);
-        let _ = std::io::Write::write_all(&mut std::io::stdout(), seq.as_bytes());
-        let _ = std::io::Write::flush(&mut std::io::stdout());
+        let mut out = std::io::stdout();
+        out.write_all(seq.as_bytes())
+            .and_then(|_| out.flush())
+            .is_ok()
+    }
+
+    /// Copy `text` and flash success or failure honestly.
+    fn copy_and_flash(&mut self, text: &str, label: &str) {
+        if self.copy_to_clipboard(text) {
+            self.flash(format!("{} copied", label), 3);
+        } else {
+            self.flash("Clipboard copy failed".into(), 3);
+        }
     }
 
     fn flash(&mut self, msg: String, secs: u64) {

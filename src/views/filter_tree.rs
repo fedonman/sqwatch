@@ -472,7 +472,7 @@ impl FilterTree {
                     UNCHECKED_COLOR
                 };
 
-                let item_label = truncate(label, list_area.width as usize - 5);
+                let item_label = truncate(label, (list_area.width as usize).saturating_sub(5));
                 let text = format!("  {} {}", mark, item_label);
 
                 let mut style = Style::default().fg(color);
