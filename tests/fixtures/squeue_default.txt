@@ -1,0 +1,3 @@
+1001|train_model|alice|RUNNING|1:23:45|node01|8|16G|gpu|normal
+1002|preprocess|bob|PENDING|0:00|N/A|4|8G|cpu|normal
+1003|eval|carol|COMPLETED|10:00|node[02-03]|16|32G|gpu|high

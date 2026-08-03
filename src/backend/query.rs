@@ -135,14 +135,19 @@ pub async fn fetch_jobs(params: &QueryParams) -> Result<Vec<Job>> {
 
 fn decode_output(output: &Output, fmt: &str) -> Result<Vec<Job>> {
     let raw = String::from_utf8_lossy(&output.stdout);
+    Ok(decode_squeue_output(&raw, fmt))
+}
 
+/// Parse `FIELD_SEP`-delimited `squeue` output into jobs. Split out from
+/// [`fetch_jobs`] so parsing can be tested without spawning `squeue`.
+pub fn decode_squeue_output(raw: &str, fmt: &str) -> Vec<Job> {
     if raw.trim().is_empty() {
-        return Ok(Vec::new());
+        return Vec::new();
     }
 
     let col_codes: Vec<&str> = fmt.split(FIELD_SEP).collect();
     if col_codes.is_empty() {
-        return Ok(Vec::new());
+        return Vec::new();
     }
 
     let mut jobs = Vec::new();
@@ -195,7 +200,7 @@ fn decode_output(output: &Output, fmt: &str) -> Result<Vec<Job>> {
         jobs.push(job);
     }
 
-    Ok(jobs)
+    jobs
 }
 
 #[cfg(test)]

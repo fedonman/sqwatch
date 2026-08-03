@@ -79,7 +79,7 @@ impl FromStr for JobState {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Job {
     pub job_id: String,
     pub name: String,
