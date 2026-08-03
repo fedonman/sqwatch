@@ -73,13 +73,21 @@ impl FileObserver {
 
     fn event_loop(&mut self) -> Result<(), RecvError> {
         let (fs_tx, fs_rx) = unbounded();
-        let mut watcher = notify::recommended_watcher(move |res: notify::Result<notify::Event>| {
-            let ev = res.unwrap();
-            if let notify::EventKind::Modify(ModifyKind::Data(_)) = ev.kind {
-                fs_tx.send(ev.paths).unwrap();
-            }
-        })
-        .unwrap();
+        let mut watcher =
+            match notify::recommended_watcher(move |res: notify::Result<notify::Event>| {
+                let Ok(ev) = res else { return };
+                if let notify::EventKind::Modify(ModifyKind::Data(_)) = ev.kind {
+                    let _ = fs_tx.send(ev.paths);
+                }
+            }) {
+                Ok(w) => w,
+                Err(e) => {
+                    // No watcher (e.g. inotify limits on a login node): report it
+                    // and end the observer cleanly instead of panicking the thread.
+                    let _ = self.output.send(Err(MonitorError::Watcher(e)));
+                    return Ok(());
+                }
+            };
 
         let (mut content_tx, mut content_rx) = unbounded::<io::Result<String>>();
         let (mut notify_tx, mut notify_rx) = unbounded::<()>();
@@ -94,9 +102,7 @@ impl FileObserver {
                             (notify_tx, notify_rx) = unbounded::<()>();
 
                             if let Some(old) = &self.watched {
-                                watcher
-                                    .unwatch(old)
-                                    .unwrap_or_else(|_| panic!("Failed to unwatch {:?}", old));
+                                let _ = watcher.unwatch(old);
                                 self.watched = None;
                             }
 
@@ -129,22 +135,20 @@ impl FileObserver {
                                         });
                                     }
                                     Err(e) => {
-                                        self.output
-                                            .send(Err(MonitorError::Watcher(e)))
-                                            .unwrap();
+                                        let _ = self.output.send(Err(MonitorError::Watcher(e)));
                                     }
                                 }
                             } else {
-                                content_tx.send(Ok(String::new())).unwrap();
+                                let _ = content_tx.send(Ok(String::new()));
                             }
                         }
                     }
                 }
-                recv(fs_rx) -> _ => { notify_tx.send(()).unwrap(); }
+                recv(fs_rx) -> _ => { let _ = notify_tx.send(()); }
                 recv(content_rx) -> msg => {
-                    self.output
-                        .send(msg.unwrap().map_err(MonitorError::File))
-                        .unwrap();
+                    if let Ok(inner) = msg {
+                        let _ = self.output.send(inner.map_err(MonitorError::File));
+                    }
                 }
             }
         }
@@ -205,7 +209,7 @@ impl LiveFileMonitor {
     pub fn set_file_path(&mut self, path: Option<PathBuf>) {
         if self.tracked_path != path {
             self.tracked_path = path.clone();
-            self.channel.send(MonitorMsg::WatchPath(path)).unwrap();
+            let _ = self.channel.send(MonitorMsg::WatchPath(path));
         }
     }
 }
