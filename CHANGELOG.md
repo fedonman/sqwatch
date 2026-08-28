@@ -20,6 +20,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - The `squeue --format` field separator changed from `|` to an ASCII control character so job names containing `|` no longer corrupt column parsing.
 - The regex filter pipeline and focus cycling were consolidated, saved filter patterns are validated once on load, and `Shift+Tab` is now accepted regardless of the reported modifier.
+- Dependencies were refreshed to their latest compatible versions (including `ratatui` 0.30.2, `tokio` 1.53, and `regex` 1.13), and `base64` was upgraded to 0.23.
 
 ### Fixed
 
