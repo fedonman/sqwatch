@@ -51,8 +51,17 @@ impl InputLoop {
                         .checked_sub(prev_tick.elapsed())
                         .unwrap_or(Duration::ZERO);
 
-                    if event::poll(remaining).expect("event poll failed") {
-                        let ev = event::read().expect("event read failed");
+                    let ready = match event::poll(remaining) {
+                        Ok(ready) => ready,
+                        // Terminal input closed (e.g. SSH disconnect): stop the
+                        // worker so its dropped sender signals the main loop.
+                        Err(_) => break,
+                    };
+                    if ready {
+                        let ev = match event::read() {
+                            Ok(ev) => ev,
+                            Err(_) => break,
+                        };
                         let signal = match ev {
                             TermEvent::Key(k) => Some(Signal::Keyboard(k)),
                             TermEvent::Mouse(m) if cfg.capture_mouse => Some(Signal::Mouse(m)),

@@ -79,7 +79,7 @@ impl FromStr for JobState {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Job {
     pub job_id: String,
     pub name: String,
@@ -122,6 +122,36 @@ impl Default for Job {
             start_time: None,
             end_time: None,
             reason: None,
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parses_long_and_short_state_codes() {
+        assert_eq!(JobState::from_str("RUNNING").unwrap(), JobState::Running);
+        assert_eq!(JobState::from_str("R").unwrap(), JobState::Running);
+        assert_eq!(JobState::from_str("pd").unwrap(), JobState::Pending);
+        assert_eq!(
+            JobState::from_str("OUT_OF_MEMORY").unwrap(),
+            JobState::OutOfMemory
+        );
+        assert_eq!(JobState::from_str("OOM").unwrap(), JobState::OutOfMemory);
+    }
+
+    #[test]
+    fn unknown_state_falls_back_to_unknown() {
+        assert_eq!(JobState::from_str("NONSENSE").unwrap(), JobState::Unknown);
+    }
+
+    #[test]
+    fn display_round_trips_through_from_str() {
+        for st in JobState::all_known() {
+            let shown = st.to_string();
+            assert_eq!(JobState::from_str(&shown).unwrap(), st, "state {:?}", st);
         }
     }
 }

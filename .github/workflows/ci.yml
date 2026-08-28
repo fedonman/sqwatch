@@ -14,7 +14,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
-      - uses: dtolnay/rust-toolchain@nightly
+      - uses: dtolnay/rust-toolchain@stable
         with:
           components: rustfmt
       - run: cargo fmt --all --check
@@ -48,7 +48,7 @@ jobs:
         with:
           toolchain: "1.90.0"
       - uses: Swatinem/rust-cache@v2
-      - run: cargo check
+      - run: cargo check --all-targets
 
   deny:
     name: Cargo Deny
@@ -65,13 +65,19 @@ jobs:
       - uses: actions/checkout@v6
         with:
           fetch-depth: 0
-      - name: Check CHANGELOG.md was updated
+      - name: Check CHANGELOG documents this PR's changes
         run: |
-          BASE_SHA=${{ github.event.pull_request.base.sha }}
-          HEAD_SHA=${{ github.event.pull_request.head.sha }}
-          if git diff --name-only "$BASE_SHA"..."$HEAD_SHA" | grep -q '^CHANGELOG.md$'; then
-            echo "CHANGELOG.md was updated."
-          else
-            echo "::error::CHANGELOG.md was not updated. Every PR must include a changelog entry."
-            exit 1
+          section=$(awk '/^## \[Unreleased\]/{f=1; next} /^## \[/{f=0} f' CHANGELOG.md)
+          if echo "$section" | grep -q '^- '; then
+            echo "Found an Unreleased changelog entry."
+            exit 0
           fi
+          # A release PR promotes [Unreleased] into a dated version section, which
+          # legitimately leaves [Unreleased] empty. Accept it if this PR adds one.
+          git fetch --no-tags --depth=1 origin "${{ github.base_ref }}"
+          if git diff FETCH_HEAD -- CHANGELOG.md | grep -qE '^\+## \[[0-9]'; then
+            echo "Release PR: a new version section was added; empty [Unreleased] is expected."
+            exit 0
+          fi
+          echo "::error::Add a bullet under '## [Unreleased]' in CHANGELOG.md."
+          exit 1

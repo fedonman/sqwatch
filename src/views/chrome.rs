@@ -233,6 +233,7 @@ pub fn render_statusbar(
         ("Tab", "Focus"),
         ("\u{2191}\u{2193}", "Navigation"),
         ("Ctrl+W", "Widgets"),
+        ("?", "Help"),
     ];
 
     // Context-specific bindings per focused widget

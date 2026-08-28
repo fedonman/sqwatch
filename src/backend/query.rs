@@ -1,10 +1,14 @@
 use async_process::{Command, Output};
 use color_eyre::Result;
-use color_eyre::eyre::Error;
 use std::str::FromStr;
 
 use super::Job;
 use super::JobState;
+
+/// Field separator embedded in the `squeue --format` string. A control
+/// character (ASCII Unit Separator) is used instead of `|` so job names
+/// that contain `|` cannot corrupt column parsing.
+pub const FIELD_SEP: &str = "\u{1f}";
 
 #[derive(Debug, Clone)]
 pub struct QueryParams {
@@ -28,7 +32,7 @@ impl Default for QueryParams {
             qos: Vec::new(),
             name_pattern: None,
             nodes: Vec::new(),
-            fmt: "%i|%j|%u|%T|%M|%N|%C|%m|%P|%q".to_string(),
+            fmt: ["%i", "%j", "%u", "%T", "%M", "%N", "%C", "%m", "%P", "%q"].join(FIELD_SEP),
             ordering: vec![("i".to_string(), true)],
         }
     }
@@ -36,7 +40,7 @@ impl Default for QueryParams {
 
 impl QueryParams {
     pub fn columns(&self) -> Vec<&str> {
-        self.fmt.split('|').collect()
+        self.fmt.split(FIELD_SEP).collect()
     }
 
     pub fn is_valid_format(&self) -> bool {
@@ -106,30 +110,44 @@ impl QueryParams {
 }
 
 pub async fn fetch_jobs(params: &QueryParams) -> Result<Vec<Job>> {
-    let args = params.build_args();
-
     if !params.is_valid_format() {
-        return Ok(Vec::new());
+        color_eyre::eyre::bail!("internal error: invalid squeue format string");
     }
 
-    let output = match Command::new("squeue").args(&args).output().await {
-        Ok(o) => o,
-        Err(e) => return Err(Error::new(e)),
-    };
+    let args = params.build_args();
+    let output = Command::new("squeue")
+        .args(&args)
+        .output()
+        .await
+        .map_err(|e| color_eyre::eyre::eyre!("failed to run squeue: {}", e))?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        let detail = stderr.trim();
+        if detail.is_empty() {
+            color_eyre::eyre::bail!("squeue exited with {}", output.status);
+        }
+        color_eyre::eyre::bail!("squeue: {}", detail);
+    }
 
     decode_output(&output, &params.fmt)
 }
 
 fn decode_output(output: &Output, fmt: &str) -> Result<Vec<Job>> {
     let raw = String::from_utf8_lossy(&output.stdout);
+    Ok(decode_squeue_output(&raw, fmt))
+}
 
+/// Parse `FIELD_SEP`-delimited `squeue` output into jobs. Split out from
+/// [`fetch_jobs`] so parsing can be tested without spawning `squeue`.
+pub fn decode_squeue_output(raw: &str, fmt: &str) -> Vec<Job> {
     if raw.trim().is_empty() {
-        return Ok(Vec::new());
+        return Vec::new();
     }
 
-    let col_codes: Vec<&str> = fmt.split('|').collect();
+    let col_codes: Vec<&str> = fmt.split(FIELD_SEP).collect();
     if col_codes.is_empty() {
-        return Ok(Vec::new());
+        return Vec::new();
     }
 
     let mut jobs = Vec::new();
@@ -139,7 +157,7 @@ fn decode_output(output: &Output, fmt: &str) -> Result<Vec<Job>> {
             continue;
         }
 
-        let fields: Vec<&str> = line.split('|').collect();
+        let fields: Vec<&str> = line.split(FIELD_SEP).collect();
         if fields.is_empty() || fields.len() < col_codes.len() / 2 {
             continue;
         }
@@ -174,6 +192,7 @@ fn decode_output(output: &Output, fmt: &str) -> Result<Vec<Job>> {
                 "%V" => job.submit_time = Some(val),
                 "%S" => job.start_time = Some(val),
                 "%e" => job.end_time = Some(val),
+                "%R" => job.reason = Some(val),
                 _ => {}
             }
         }
@@ -181,5 +200,55 @@ fn decode_output(output: &Output, fmt: &str) -> Result<Vec<Job>> {
         jobs.push(job);
     }
 
-    Ok(jobs)
+    jobs
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::backend::JobState;
+
+    #[test]
+    fn build_args_defaults_to_all_states() {
+        let args = QueryParams::default().build_args();
+        assert!(args.contains(&"--all".to_string()));
+        assert!(args.contains(&"--noheader".to_string()));
+        let i = args.iter().position(|a| a == "--states").unwrap();
+        assert_eq!(args[i + 1], "all");
+    }
+
+    #[test]
+    fn build_args_joins_states_and_partitions() {
+        let p = QueryParams {
+            statuses: vec![JobState::Pending, JobState::Running],
+            partitions: vec!["gpu".into(), "cpu".into()],
+            ..QueryParams::default()
+        };
+        let args = p.build_args();
+        let si = args.iter().position(|a| a == "--states").unwrap();
+        assert_eq!(args[si + 1], "PENDING,RUNNING");
+        let pi = args.iter().position(|a| a == "--partition").unwrap();
+        assert_eq!(args[pi + 1], "gpu,cpu");
+    }
+
+    #[test]
+    fn build_args_prefixes_descending_sort_with_dash() {
+        let p = QueryParams {
+            ordering: vec![("P".into(), false), ("i".into(), true)],
+            ..QueryParams::default()
+        };
+        let args = p.build_args();
+        let si = args.iter().position(|a| a == "--sort").unwrap();
+        assert_eq!(args[si + 1], "-P,i");
+    }
+
+    #[test]
+    fn is_valid_format_requires_percent_prefixed_columns() {
+        let mut p = QueryParams::default();
+        assert!(p.is_valid_format());
+        p.fmt = ["%i", "bad"].join(FIELD_SEP);
+        assert!(!p.is_valid_format());
+        p.fmt = String::new();
+        assert!(!p.is_valid_format());
+    }
 }

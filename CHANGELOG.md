@@ -7,13 +7,38 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-08-28
+
+### Added
+
+- Follow/tail mode for the stdout, stderr, and custom file widgets: the view snaps to the bottom as new content arrives, with `f`, `End`, and `Home` to control following and a `[follow]` indicator in the panel title.
+- Configurable auto-refresh interval, adjustable at runtime with `+`/`-` (1–60s, default 3s) and persisted to `settings.json`.
+- In-app help overlay listing all global and per-focus keybindings, opened with `?`.
+- A library target and an initial test suite covering `squeue` argument building, job-state parsing, regex filtering, and fixture-based output decoding, including a round-trip guard that every displayable column is actually decoded.
+
+### Changed
+
+- The `squeue --format` field separator changed from `|` to an ASCII control character so job names containing `|` no longer corrupt column parsing.
+- The regex filter pipeline and focus cycling were consolidated, saved filter patterns are validated once on load, and `Shift+Tab` is now accepted regardless of the reported modifier.
+- Dependencies were refreshed to their latest compatible versions (including `ratatui` 0.30.2, `tokio` 1.53, and `regex` 1.13), and `base64` was upgraded to 0.23.
+
+### Fixed
+
+- The terminal is restored on panic via an RAII guard and a chained panic hook, so a crash no longer leaves the shell stuck in raw mode on the alternate screen.
+- The live file watcher no longer panics on inotify limits or channel errors; failures are reported through the widget instead of taking down the app.
+- Background worker failures (the input thread and the job fetcher) are surfaced instead of silently freezing the UI.
+- `squeue` failures — a non-zero exit, an unreachable controller, or a bad sort key — are shown in the flash bar instead of being rendered as a normal empty table.
+- The `Reason` (`%R`) column is now decoded and populated.
+- The hardcoded `normal`/`huge` QoS fallback was removed so the QoS filter reflects the actual cluster.
+- Clipboard copies report real success or failure, a debug-build width underflow in the filter sidebar was fixed, and the job-detail cache now evicts least-recently-used entries instead of clearing wholesale.
+
 ## [0.1.1] - 2026-03-26
 
 ### Added
 
 - Three operations that previously blocked the main thread and froze the UI — `scontrol show job` lookups, periodic `squeue` refreshes, and script file loading with optional `bat` highlighting — were moved into dedicated background threads. A new `JobDetailResolver` runs a single `scontrol` call per job and caches up to 64 results, replacing the duplicate per-widget calls that each blocked for 100–500 ms; widgets now show a "Loading…" placeholder until the detail arrives, and the resolver deduplicates rapid requests by draining the channel and keeping only the latest job ID. A new `JobFetcher` runs `squeue` in its own lightweight tokio runtime so the 1-second auto-refresh and filter-apply no longer stall rendering; the old synchronous `reload_jobs` was split into `reload_jobs_sync` (used once at startup) and a non-blocking `submit_reload` path whose results are picked up on the next timer tick. The script widget's `load_content` was similarly offloaded to a background thread so that file reads and `bat` invocations never touch the render path, with a new `poll_updates` method that mirrors the pattern already used by the output and custom widgets. The input processing loop now drains all pending signals on each iteration and collapses consecutive `Timer` events into a single tick, which eliminates the multi-second freeze that occurred when switching back to the terminal after the window had been unfocused and hundreds of stale timers had piled up in the channel. `Ctrl+C` while any content widget (script, stdout, stderr, or custom) is focused now copies the widget's content to the system clipboard via the OSC 52 escape sequence and flashes a confirmation in the titlebar; the binding works over SSH and inside tmux without requiring X11 or Wayland, and `Esc` remains the key for returning focus to the table. The script widget gained `PageUp`/`PageDown` and `Ctrl+U`/`Ctrl+D` scrolling to match the other widgets, and all four content widget types now show `PgUp/Dn Scroll` and `Ctrl+C Copy` hints in the statusbar. [PR #5](https://github.com/fedonman/sqwatch/pull/5)
 
-- Added CI/CD infrastructure so that every pull request and push to main is automatically checked for formatting, linting, test correctness, minimum supported Rust version compatibility (1.85.0), and dependency license and vulnerability audits via `cargo-deny`. Pull requests now require a changelog entry before merging. A separate manually-triggered release workflow handles version validation, publishing to crates.io, and creating GitHub Releases with the relevant changelog section as release notes. [PR #1](https://github.com/fedonman/sqwatch/pull/1)
+- Added CI/CD infrastructure so that every pull request and push to main is automatically checked for formatting, linting, test correctness, minimum supported Rust version compatibility (1.90), and dependency license and vulnerability audits via `cargo-deny`. Pull requests now require a changelog entry before merging. A separate manually-triggered release workflow handles version validation, publishing to crates.io, and creating GitHub Releases with the relevant changelog section as release notes. [PR #1](https://github.com/fedonman/sqwatch/pull/1)
 
 ### Changed
 

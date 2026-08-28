@@ -82,7 +82,7 @@ pub fn save_filters(params: &QueryParams) -> Result<(), String> {
 // --- Column settings persistence ---
 
 #[derive(Debug, Serialize, Deserialize)]
-pub(crate) struct SavedSort {
+pub struct SavedSort {
     field: String,
     direction: String,
 }
@@ -208,5 +208,38 @@ pub fn save_layout(widgets: &VisibleWidgets) -> Result<(), String> {
     };
     let json =
         serde_json::to_string_pretty(&saved).map_err(|e| format!("Failed to serialize: {}", e))?;
+    fs::write(&path, json).map_err(|e| format!("Failed to write {}: {}", path.display(), e))
+}
+
+// --- General settings persistence ---
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct SavedSettings {
+    pub refresh_secs: u64,
+}
+
+impl Default for SavedSettings {
+    fn default() -> Self {
+        Self { refresh_secs: 3 }
+    }
+}
+
+fn settings_path() -> PathBuf {
+    sqwatch_config_dir().join("settings.json")
+}
+
+pub fn load_settings() -> Option<SavedSettings> {
+    let path = settings_path();
+    let data = fs::read_to_string(path).ok()?;
+    serde_json::from_str(&data).ok()
+}
+
+pub fn save_settings(settings: &SavedSettings) -> Result<(), String> {
+    let path = settings_path();
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent).map_err(|e| format!("Failed to create config dir: {}", e))?;
+    }
+    let json = serde_json::to_string_pretty(settings)
+        .map_err(|e| format!("Failed to serialize: {}", e))?;
     fs::write(&path, json).map_err(|e| format!("Failed to write {}: {}", path.display(), e))
 }

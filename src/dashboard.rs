@@ -4,8 +4,8 @@ use crossterm::event::{KeyCode, KeyEvent, KeyEventKind, KeyModifiers, MouseEvent
 use ratatui::{
     Frame,
     layout::Rect,
-    style::{Color, Style},
-    text::Line,
+    style::{Color, Modifier, Style},
+    text::{Line, Span},
     widgets::{Block, Borders, Clear, Paragraph},
 };
 use std::time::{Duration, Instant};
@@ -15,11 +15,12 @@ use crate::{
     backend::{
         Job, JobState,
         commands::{cancel_jobs, check_slurm_available, list_nodes, list_partitions, list_qos},
-        query::{QueryParams, fetch_jobs},
+        query::{FIELD_SEP, QueryParams, fetch_jobs},
     },
     core::{
         config::{
-            load_columns, load_filters, load_layout, save_columns, save_filters, save_layout,
+            SavedSettings, load_columns, load_filters, load_layout, load_settings, save_columns,
+            save_filters, save_layout, save_settings,
         },
         input::{InputConfig, InputLoop, Signal},
         job_detail::JobDetailResolver,
@@ -74,6 +75,7 @@ pub struct Dashboard {
     pub sort_fields: Vec<OrderedField>,
     pub login_user: String,
     confirming_cancel: bool,
+    show_help: bool,
     job_detail_resolver: JobDetailResolver,
     job_fetcher: JobFetcher,
     pending_filter_apply: bool,
@@ -93,6 +95,19 @@ impl Dashboard {
             saved.apply_to(&mut params);
         }
 
+        // Drop any saved regex that no longer compiles so the runtime filter
+        // path only ever sees valid patterns (validated once, here).
+        if let Some(p) = &params.user
+            && regex::Regex::new(p).is_err()
+        {
+            params.user = None;
+        }
+        if let Some(p) = &params.name_pattern
+            && regex::Regex::new(p).is_err()
+        {
+            params.name_pattern = None;
+        }
+
         let known_partitions = rt.block_on(list_partitions());
         let known_qos = rt.block_on(list_qos());
         let known_nodes = rt.block_on(list_nodes());
@@ -107,6 +122,10 @@ impl Dashboard {
                 }],
             )
         });
+
+        let refresh_secs = load_settings()
+            .map(|s| s.refresh_secs.clamp(1, 60))
+            .unwrap_or(3);
 
         let visible_widgets = load_layout().unwrap_or_default();
         let custom_widgets = visible_widgets
@@ -134,7 +153,7 @@ impl Dashboard {
             focus: FocusWidget::Table,
             notice: String::new(),
             notice_expires: None,
-            refresh_secs: 1,
+            refresh_secs,
             known_partitions,
             known_qos,
             known_nodes,
@@ -143,6 +162,7 @@ impl Dashboard {
             sort_fields,
             login_user: std::env::var("USER").unwrap_or_else(|_| "unknown".to_string()),
             confirming_cancel: false,
+            show_help: false,
             job_detail_resolver: JobDetailResolver::new(),
             job_fetcher: JobFetcher::new(),
             pending_filter_apply: false,
@@ -171,26 +191,18 @@ impl Dashboard {
         self.rebuild_format();
 
         let p = self.params.clone();
-        let mut jobs = self.rt.block_on(fetch_jobs(&p))?;
+        let mut jobs = match self.rt.block_on(fetch_jobs(&p)) {
+            Ok(jobs) => jobs,
+            Err(e) => {
+                self.flash(format!("squeue failed: {}", e), 10);
+                Vec::new()
+            }
+        };
 
         let mut stats = Vec::new();
         let total = jobs.len();
 
-        if let Some(ref pat) = self.params.user {
-            match Self::apply_regex_filter(&mut jobs, pat, |j| &j.user) {
-                Ok(Some(stat)) => stats.push(format!("user: {}", stat)),
-                Ok(None) => {}
-                Err(e) => self.flash(format!("Invalid user regex pattern: {}", e), 3),
-            }
-        }
-
-        if let Some(ref pat) = self.params.name_pattern {
-            match Self::apply_regex_filter(&mut jobs, pat, |j| &j.name) {
-                Ok(Some(stat)) => stats.push(format!("name: {}", stat)),
-                Ok(None) => {}
-                Err(e) => self.flash(format!("Invalid name regex pattern: {}", e), 3),
-            }
-        }
+        stats.extend(self.run_regex_filters(&mut jobs));
 
         if !stats.is_empty() {
             let remaining = jobs.len();
@@ -228,21 +240,7 @@ impl Dashboard {
         let mut stats = Vec::new();
         let total = jobs.len();
 
-        if let Some(ref pat) = self.params.user {
-            match Self::apply_regex_filter(&mut jobs, pat, |j| &j.user) {
-                Ok(Some(stat)) => stats.push(format!("user: {}", stat)),
-                Ok(None) => {}
-                Err(e) => self.flash(format!("Invalid user regex pattern: {}", e), 3),
-            }
-        }
-
-        if let Some(ref pat) = self.params.name_pattern {
-            match Self::apply_regex_filter(&mut jobs, pat, |j| &j.name) {
-                Ok(Some(stat)) => stats.push(format!("name: {}", stat)),
-                Ok(None) => {}
-                Err(e) => self.flash(format!("Invalid name regex pattern: {}", e), 3),
-            }
-        }
+        stats.extend(self.run_regex_filters(&mut jobs));
 
         if self.pending_filter_apply {
             self.pending_filter_apply = false;
@@ -301,6 +299,28 @@ impl Dashboard {
         } else {
             Ok(None)
         }
+    }
+
+    /// Apply the user and job-name regex filters to `jobs`, returning a
+    /// stat string per filter that removed rows. Shared by the synchronous
+    /// startup reload and the async fetch path.
+    fn run_regex_filters(&mut self, jobs: &mut Vec<Job>) -> Vec<String> {
+        let mut stats = Vec::new();
+        if let Some(pat) = self.params.user.clone() {
+            match Self::apply_regex_filter(jobs, &pat, |j| &j.user) {
+                Ok(Some(stat)) => stats.push(format!("user: {}", stat)),
+                Ok(None) => {}
+                Err(e) => self.flash(format!("Invalid user regex pattern: {}", e), 3),
+            }
+        }
+        if let Some(pat) = self.params.name_pattern.clone() {
+            match Self::apply_regex_filter(jobs, &pat, |j| &j.name) {
+                Ok(Some(stat)) => stats.push(format!("name: {}", stat)),
+                Ok(None) => {}
+                Err(e) => self.flash(format!("Invalid name regex pattern: {}", e), 3),
+            }
+        }
+        stats
     }
 
     // ── Drawing ──────────────────────────────────────────────
@@ -363,6 +383,11 @@ impl Dashboard {
         if self.confirming_cancel {
             let r = popup_rect(frame.area(), 45, 25);
             self.draw_cancel_confirm(frame, r);
+        }
+
+        if self.show_help {
+            let r = popup_rect(frame.area(), 60, 85);
+            self.draw_help(frame, r);
         }
     }
 
@@ -496,11 +521,34 @@ impl Dashboard {
         frame.render_widget(widget, area);
     }
 
+    fn draw_help(&self, frame: &mut Frame, area: Rect) {
+        frame.render_widget(Clear, area);
+
+        let block = Block::default()
+            .title(Line::from(" \u{25c6} Keybindings \u{25c6} ").centered())
+            .borders(Borders::ALL)
+            .border_type(ratatui::widgets::BorderType::Rounded)
+            .border_style(Style::default().fg(Color::Rgb(200, 120, 255)))
+            .style(Style::default().bg(Color::Rgb(15, 15, 30)));
+
+        let widget = Paragraph::new(help_lines()).block(block);
+        frame.render_widget(widget, area);
+    }
+
     // ── Input handling ───────────────────────────────────────
 
     fn process_input(&mut self) -> Result<()> {
-        // Block until the first event arrives.
-        let first = self.input.rx.recv()?;
+        use std::sync::mpsc::RecvTimeoutError;
+
+        // Wait for the next event, but time out so a dead input thread (a
+        // dropped sender) is detected instead of blocking the UI forever.
+        let first = match self.input.rx.recv_timeout(Duration::from_millis(500)) {
+            Ok(sig) => sig,
+            Err(RecvTimeoutError::Timeout) => return Ok(()),
+            Err(RecvTimeoutError::Disconnected) => {
+                color_eyre::eyre::bail!("input worker thread stopped unexpectedly");
+            }
+        };
 
         // Drain every additional pending event so stale timers that
         // accumulated while the terminal was unfocused are collapsed
@@ -529,6 +577,12 @@ impl Dashboard {
     }
 
     fn on_keypress(&mut self, key: KeyEvent) {
+        // ── Help overlay (modal, any key dismisses) ──
+        if self.show_help {
+            self.show_help = false;
+            return;
+        }
+
         // ── Popup-level dispatch (highest priority) ──
         if self.confirming_cancel {
             match key.code {
@@ -608,22 +662,19 @@ impl Dashboard {
             (KeyModifiers::CONTROL, KeyCode::Char('c')) => {
                 match &self.focus {
                     FocusWidget::Script => {
-                        self.copy_to_clipboard(&self.script.body.clone());
-                        self.flash("Script contents copied".into(), 3);
+                        self.copy_and_flash(&self.script.body.clone(), "Script contents");
                     }
                     FocusWidget::Stdout => {
-                        self.copy_to_clipboard(&self.stdout_widget.content.clone());
-                        self.flash("Stdout contents copied".into(), 3);
+                        self.copy_and_flash(&self.stdout_widget.content.clone(), "Stdout contents");
                     }
                     FocusWidget::Stderr => {
-                        self.copy_to_clipboard(&self.stderr_widget.content.clone());
-                        self.flash("Stderr contents copied".into(), 3);
+                        self.copy_and_flash(&self.stderr_widget.content.clone(), "Stderr contents");
                     }
                     FocusWidget::Custom(i) => {
                         if let Some(cw) = self.custom_widgets.get(*i) {
                             let title = cw.title.clone();
-                            self.copy_to_clipboard(&cw.content.clone());
-                            self.flash(format!("{} contents copied", title), 3);
+                            let content = cw.content.clone();
+                            self.copy_and_flash(&content, &format!("{} contents", title));
                         }
                     }
                     FocusWidget::Sidebar | FocusWidget::Table => {
@@ -637,15 +688,27 @@ impl Dashboard {
                 return;
             }
             (_, KeyCode::Tab) => {
-                self.cycle_focus();
+                self.cycle_focus(true);
                 return;
             }
-            (KeyModifiers::SHIFT, KeyCode::BackTab) => {
-                self.cycle_focus_reverse();
+            (_, KeyCode::BackTab) => {
+                self.cycle_focus(false);
                 return;
             }
             (KeyModifiers::CONTROL, KeyCode::Char('w')) => {
                 self.widget_sel.visible = true;
+                return;
+            }
+            (_, KeyCode::Char('+')) | (_, KeyCode::Char('=')) => {
+                self.adjust_refresh(1);
+                return;
+            }
+            (_, KeyCode::Char('-')) | (_, KeyCode::Char('_')) => {
+                self.adjust_refresh(-1);
+                return;
+            }
+            (_, KeyCode::Char('?')) => {
+                self.show_help = true;
                 return;
             }
             _ => {}
@@ -756,26 +819,16 @@ impl Dashboard {
         items
     }
 
-    fn cycle_focus(&mut self) {
+    fn cycle_focus(&mut self, forward: bool) {
         let items = self.focusable_widgets();
         if items.len() <= 1 {
             return;
         }
         let current = items.iter().position(|p| *p == self.focus).unwrap_or(0);
-        let next = (current + 1) % items.len();
-        self.focus = items[next].clone();
-    }
-
-    fn cycle_focus_reverse(&mut self) {
-        let items = self.focusable_widgets();
-        if items.len() <= 1 {
-            return;
-        }
-        let current = items.iter().position(|p| *p == self.focus).unwrap_or(0);
-        let next = if current == 0 {
-            items.len() - 1
+        let next = if forward {
+            (current + 1) % items.len()
         } else {
-            current - 1
+            (current + items.len() - 1) % items.len()
         };
         self.focus = items[next].clone();
     }
@@ -867,11 +920,40 @@ impl Dashboard {
 
     /// Copy text to the system clipboard via the OSC 52 escape sequence.
     /// Works over SSH and inside tmux without requiring X11/Wayland.
-    fn copy_to_clipboard(&self, text: &str) {
+    /// Returns whether the escape sequence was actually written.
+    fn copy_to_clipboard(&self, text: &str) -> bool {
+        use std::io::Write;
         let encoded = BASE64.encode(text);
         let seq = format!("\x1b]52;c;{}\x07", encoded);
-        let _ = std::io::Write::write_all(&mut std::io::stdout(), seq.as_bytes());
-        let _ = std::io::Write::flush(&mut std::io::stdout());
+        let mut out = std::io::stdout();
+        out.write_all(seq.as_bytes())
+            .and_then(|_| out.flush())
+            .is_ok()
+    }
+
+    /// Copy `text` and flash success or failure honestly.
+    fn copy_and_flash(&mut self, text: &str, label: &str) {
+        if self.copy_to_clipboard(text) {
+            self.flash(format!("{} copied", label), 3);
+        } else {
+            self.flash("Clipboard copy failed".into(), 3);
+        }
+    }
+
+    /// Adjust the auto-refresh interval (clamped to 1–60s) and persist it.
+    fn adjust_refresh(&mut self, delta: i64) {
+        let new = (self.refresh_secs as i64 + delta).clamp(1, 60) as u64;
+        if new == self.refresh_secs {
+            return;
+        }
+        self.refresh_secs = new;
+        match save_settings(&SavedSettings { refresh_secs: new }) {
+            Ok(_) => self.flash(format!("Refresh interval: {}s", new), 3),
+            Err(e) => self.flash(
+                format!("Refresh interval: {}s (save failed: {})", new, e),
+                3,
+            ),
+        }
     }
 
     fn flash(&mut self, msg: String, secs: u64) {
@@ -933,7 +1015,7 @@ impl Dashboard {
             codes.push("%Z");
         }
 
-        self.params.fmt = codes.join("|");
+        self.params.fmt = codes.join(FIELD_SEP);
 
         self.params.ordering.clear();
         if !self.sort_fields.is_empty() {
@@ -971,5 +1053,107 @@ impl Dashboard {
                 self.flash(format!("Cancel failed: {}", e), 5);
             }
         }
+    }
+}
+
+/// Build the keybinding reference shown in the help overlay.
+fn help_lines() -> Vec<Line<'static>> {
+    let header = |t: &'static str| {
+        Line::from(Span::styled(
+            t,
+            Style::default()
+                .fg(Color::Rgb(200, 170, 240))
+                .add_modifier(Modifier::BOLD),
+        ))
+    };
+    let row = |k: &'static str, d: &'static str| {
+        Line::from(vec![
+            Span::styled(
+                format!("  {:<18}", k),
+                Style::default().fg(Color::Rgb(120, 200, 255)),
+            ),
+            Span::styled(d, Style::default().fg(Color::Rgb(200, 200, 210))),
+        ])
+    };
+
+    vec![
+        Line::raw(""),
+        header("  Global"),
+        row("Tab / Shift+Tab", "Cycle focus between panels"),
+        row("Ctrl+W", "Widget layout"),
+        row("+ / -", "Refresh interval"),
+        row("?", "Toggle this help"),
+        row("Esc", "Back to table, or quit"),
+        Line::raw(""),
+        header("  Job table"),
+        row("Up / Down", "Navigate jobs"),
+        row("Space", "Mark / unmark job"),
+        row("Ctrl+A", "Select / deselect all"),
+        row("Ctrl+X", "Cancel selected jobs"),
+        row("Ctrl+C", "Column configuration"),
+        Line::raw(""),
+        header("  Log / script panels"),
+        row("Up/Dn PgUp/PgDn", "Scroll"),
+        row("Ctrl+U / Ctrl+D", "Page up / down"),
+        row("f / End / Home", "Follow / jump to bottom / top"),
+        row("Shift+Up/Down", "Switch to prev / next job"),
+        row("Ctrl+C", "Copy panel contents"),
+        Line::raw(""),
+        header("  Filter sidebar"),
+        row("Up / Down", "Navigate"),
+        row("Enter", "Edit field / toggle item"),
+        row("Ctrl+S", "Save filters"),
+        Line::raw(""),
+        Line::from(Span::styled(
+            "  Press any key to close",
+            Style::default().fg(Color::DarkGray),
+        )),
+    ]
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::backend::Job;
+
+    fn job_with_user(user: &str) -> Job {
+        Job {
+            user: user.to_string(),
+            ..Job::default()
+        }
+    }
+
+    #[test]
+    fn regex_filter_retains_matching_rows() {
+        let mut jobs = vec![
+            job_with_user("alice"),
+            job_with_user("bob"),
+            job_with_user("alba"),
+        ];
+        let stat = Dashboard::apply_regex_filter(&mut jobs, "^al", |j| &j.user).unwrap();
+        assert_eq!(jobs.len(), 2);
+        assert!(stat.is_some());
+    }
+
+    #[test]
+    fn regex_filter_reports_none_when_nothing_removed() {
+        let mut jobs = vec![job_with_user("alice"), job_with_user("alba")];
+        let stat = Dashboard::apply_regex_filter(&mut jobs, "^al", |j| &j.user).unwrap();
+        assert_eq!(jobs.len(), 2);
+        assert!(stat.is_none());
+    }
+
+    #[test]
+    fn regex_filter_empty_pattern_is_a_noop() {
+        let mut jobs = vec![job_with_user("alice")];
+        let stat = Dashboard::apply_regex_filter(&mut jobs, "", |j| &j.user).unwrap();
+        assert!(stat.is_none());
+        assert_eq!(jobs.len(), 1);
+    }
+
+    #[test]
+    fn regex_filter_errors_on_invalid_pattern() {
+        let mut jobs = vec![job_with_user("alice")];
+        assert!(Dashboard::apply_regex_filter(&mut jobs, "[", |j| &j.user).is_err());
     }
 }

@@ -17,6 +17,12 @@ pub struct JobTable {
     pub sort_asc: bool,
 }
 
+impl Default for JobTable {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl JobTable {
     pub fn new() -> Self {
         Self {
