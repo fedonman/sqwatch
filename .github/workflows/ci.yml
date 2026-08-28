@@ -63,12 +63,21 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
-      - name: Check CHANGELOG has an Unreleased entry
+        with:
+          fetch-depth: 0
+      - name: Check CHANGELOG documents this PR's changes
         run: |
           section=$(awk '/^## \[Unreleased\]/{f=1; next} /^## \[/{f=0} f' CHANGELOG.md)
           if echo "$section" | grep -q '^- '; then
             echo "Found an Unreleased changelog entry."
-          else
-            echo "::error::Add a bullet under '## [Unreleased]' in CHANGELOG.md."
-            exit 1
+            exit 0
           fi
+          # A release PR promotes [Unreleased] into a dated version section, which
+          # legitimately leaves [Unreleased] empty. Accept it if this PR adds one.
+          git fetch --no-tags --depth=1 origin "${{ github.base_ref }}"
+          if git diff FETCH_HEAD -- CHANGELOG.md | grep -qE '^\+## \[[0-9]'; then
+            echo "Release PR: a new version section was added; empty [Unreleased] is expected."
+            exit 0
+          fi
+          echo "::error::Add a bullet under '## [Unreleased]' in CHANGELOG.md."
+          exit 1
