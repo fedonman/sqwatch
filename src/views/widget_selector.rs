@@ -99,7 +99,7 @@ impl VisibleWidgets {
     }
 
     /// Ordered list of all visible panel widget kinds
-    /// (script, stdout, stderr, then custom — in priority order).
+    /// (script, stdout, stderr, then custom, in priority order).
     pub fn visible_panel_widgets(&self) -> Vec<WidgetKind> {
         let mut out = Vec::new();
         if self.script {

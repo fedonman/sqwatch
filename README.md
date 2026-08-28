@@ -2,24 +2,30 @@
 
 A lightweight terminal UI for watching and managing SLURM job queues in real time.
 
-`sqwatch` gives you a live, interactive dashboard for your SLURM cluster right in the terminal. Browse jobs, inspect scripts and logs, filter by any field, and cancel jobs — all without leaving the command line.
+`sqwatch` gives you a live, interactive dashboard for your SLURM cluster right in the terminal. You can browse jobs, read their scripts and logs, filter by any field, and cancel jobs without leaving the command line.
+
+<p align="center">
+  <img src="sqwatch-demo.png" alt="sqwatch dashboard: job table, a following stdout tail, and the submission script" width="900">
+</p>
+
+<p align="center"><sub>Live dashboard with a sample queue: color-coded job table, a following stdout tail, and the submission script pane.</sub></p>
 
 ## Features
 
-- **Live queue view** — Auto-refreshing job table with color-coded states (pending, running, failed, completed, suspended, out of memory, etc.). Job selection and cursor position are preserved across refresh cycles. Job fetching runs in a background thread so the UI never stalls.
-- **Flexible filtering** — Persistent sidebar for filtering by user (regex), job name (regex), state, partition, QoS, or node. Partitions, QoS, and nodes are populated from the cluster automatically. Filter settings are persisted to disk and restored on launch.
-- **Column configuration** — Choose which `squeue` fields to display, reorder them, and define multi-level sort priorities. Column settings are also persisted.
-- **Script inspector** — View the submission script of any job, with syntax highlighting via [`bat`](https://github.com/sharkdp/bat) if available. Falls back to plain text with line numbers. Script content loads in a background thread.
-- **Log viewer** — Tail stdout/stderr logs in real time with automatic file watching via `notify`.
-- **Custom output widgets** — Define additional file-watching panels for arbitrary job output files, with automatic JSON pretty-printing.
-- **Widget layout** — Toggle visibility of individual panels (filters, script, stdout, stderr, custom widgets) and persist your preferred layout.
-- **Clipboard support** — Copy widget contents to the system clipboard via OSC 52, which works over SSH and inside tmux without X11/Wayland.
-- **Bulk actions** — Select one or many jobs and cancel them in batch with confirmation. Errors from `scancel` are reported through the flash notification bar.
+- **Live queue view.** An auto-refreshing job table with color-coded states (pending, running, failed, completed, suspended, out of memory, and so on). Your selection and cursor position survive each refresh, and jobs are fetched on a background thread so the UI never stalls.
+- **Filtering.** A persistent sidebar filters by user (regex), job name (regex), state, partition, QoS, or node. Partitions, QoS values, and nodes are read from the cluster automatically. Filter settings are saved to disk and restored the next time you launch.
+- **Column configuration.** Choose which `squeue` fields to show, reorder them, and set multi-level sort priorities. Column settings are saved too.
+- **Script inspector.** View the submission script for any job, with syntax highlighting through [`bat`](https://github.com/sharkdp/bat) when it is installed, or plain text with line numbers when it isn't. Scripts load on a background thread.
+- **Log viewer.** Tail stdout and stderr logs in real time. Changes to the files are picked up automatically with the `notify` crate.
+- **Custom output widgets.** Add your own file-watching panels for any job output files. JSON is pretty-printed for you.
+- **Widget layout.** Toggle individual panels on and off (filters, script, stdout, stderr, custom widgets) and save the layout you prefer.
+- **Clipboard support.** Copy a widget's contents to the system clipboard with OSC 52, which works over SSH and inside tmux without X11 or Wayland.
+- **Bulk actions.** Select one job or many and cancel them together after a confirmation prompt. Any errors from `scancel` show up in the flash notification bar.
 
 ## Requirements
 
-- **SLURM client utilities** — `squeue`, `scontrol`, `sinfo`, `scancel`, and `sacctmgr` must be in your `PATH`.
-- **Rust 1.90+** — Required to build from source.
+- **SLURM client utilities.** `squeue`, `scontrol`, `sinfo`, `scancel`, and `sacctmgr` must be on your `PATH`.
+- **Rust 1.90 or newer**, needed only if you build from source.
 - **Optional:** [`bat`](https://github.com/sharkdp/bat) for syntax-highlighted script viewing.
 
 ## Installation
@@ -127,8 +133,8 @@ The project is organized into four modules:
 
 ```
 src/
-├── main.rs                # Entry point — terminal setup and teardown
-├── dashboard.rs           # Central orchestrator — event loop, state, rendering
+├── main.rs                # Entry point: terminal setup and teardown
+├── dashboard.rs           # Central orchestrator: event loop, state, rendering
 ├── backend/
 │   ├── mod.rs             # Job and JobState data types
 │   ├── commands.rs        # Async wrappers around SLURM CLI tools
@@ -185,10 +191,10 @@ cargo deny check                            # License and advisory audit
 
 ### Project conventions
 
-- **Edition 2024** — uses let-chains and other modern Rust features.
-- **No `unsafe`** — the codebase is entirely safe Rust.
-- **Async for SLURM commands only** — the TUI event loop is synchronous; async is used solely for non-blocking SLURM CLI calls via `async-process` + tokio. Background workers use crossbeam channels, not async, to communicate with the dashboard.
-- **`color-eyre`** for error handling — `Result<()>` flows from `main()` through the dashboard.
+- **Edition 2024.** Uses let-chains and other recent Rust features.
+- **No `unsafe`.** The codebase is entirely safe Rust.
+- **Async for SLURM commands only.** The TUI event loop is synchronous. Async is used only to keep the SLURM CLI calls from blocking, through `async-process` and tokio. Background workers talk to the dashboard over crossbeam channels rather than async.
+- **`color-eyre`** for error handling. A `Result<()>` flows from `main()` down through the dashboard.
 
 ## Contributing
 

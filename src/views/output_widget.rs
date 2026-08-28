@@ -94,7 +94,7 @@ impl OutputWidget {
     }
 
     /// Apply resolved job detail from the background resolver.
-    /// Idempotent — returns immediately if detail was already applied.
+    /// Idempotent. Returns immediately if the detail was already applied.
     pub fn set_detail(&mut self, detail: &JobDetail) {
         if self.detail_applied {
             return;

@@ -186,7 +186,7 @@ impl Dashboard {
         Ok(())
     }
 
-    /// Synchronous job reload — used only during initialization.
+    /// Synchronous job reload, used only during initialization.
     fn reload_jobs_sync(&mut self) -> Result<()> {
         self.rebuild_format();
 
@@ -931,7 +931,7 @@ impl Dashboard {
             .is_ok()
     }
 
-    /// Copy `text` and flash success or failure honestly.
+    /// Copy `text` and flash whether it succeeded or failed.
     fn copy_and_flash(&mut self, text: &str, label: &str) {
         if self.copy_to_clipboard(text) {
             self.flash(format!("{} copied", label), 3);
