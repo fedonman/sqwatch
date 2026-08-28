@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-08-28
+
 ### Added
 
 - Follow/tail mode for the stdout, stderr, and custom file widgets: the view snaps to the bottom as new content arrives, with `f`, `End`, and `Home` to control following and a `[follow]` indicator in the panel title.
