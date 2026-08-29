@@ -1,0 +1,38 @@
+name: Feature Request
+description: Suggest a new feature or enhancement for sqwatch
+title: "[Feature]: "
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Keep it short. A one-line title like `Add a <thing> column` plus a sketch of what you want on screen is enough.
+
+  - type: textarea
+    id: summary
+    attributes:
+      label: Feature Summary
+      description: What to add, in a sentence or two.
+      placeholder: One or two sentences describing the feature.
+    validations:
+      required: true
+
+  - type: textarea
+    id: motivation
+    attributes:
+      label: Motivation / Use Case
+      description: What you cannot do today, and why the workaround is not good enough.
+      placeholder: I'm trying to do X, but currently I have to work around it by...
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposed_solution
+    attributes:
+      label: Proposed Solution
+      description: |
+        What you want, concretely. A sketch of the pane or column, the key you would press, or the `squeue` field it maps to. Add a note about any design decision the implementer has to settle.
+      placeholder: |
+        A new "Reason" column, filled from `squeue -o %r`, shown between State and Time.
+    validations:
+      required: false
