@@ -13,6 +13,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - A config file that is present but cannot be read or parsed is reported at startup instead of being treated as a first run and silently replaced with defaults.
 - `columns.json` stores each column by a fixed name rather than the heading shown in the table, so rewording a heading no longer drops that column and its sort key from saved layouts. Existing files still load, and a saved column that matches nothing is reported at startup instead of vanishing.
 - Log panes now catch up with a file that has been truncated or rewritten shorter — a requeue or a rotation — instead of showing the content from before the truncation indefinitely.
+- The username and job-name filters now work whether or not their column is on screen. Hiding a column stopped its field being fetched, so the regex ran against an empty value and emptied the table while reporting success.
 
 ## [0.2.0] - 2026-08-28
 
