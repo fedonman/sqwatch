@@ -5,7 +5,8 @@ use std::collections::HashMap;
 pub fn check_slurm_available() -> Result<()> {
     use std::process::Command as StdCommand;
     match StdCommand::new("squeue").arg("--version").output() {
-        Ok(_) => Ok(()),
+        Ok(out) if out.status.success() => Ok(()),
+        Ok(out) => color_eyre::eyre::bail!(failure_message("squeue --version", &out)),
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
             color_eyre::eyre::bail!(
                 "SLURM tools not found.\n\
@@ -22,6 +23,37 @@ pub fn check_slurm_available() -> Result<()> {
 pub async fn run_cmd(program: &str, args: Vec<String>) -> Result<Output> {
     let out = Command::new(program).args(args).output().await?;
     Ok(out)
+}
+
+/// What a command printed when it exited non-zero, or its exit status when it
+/// printed nothing.
+fn failure_message(program: &str, out: &Output) -> String {
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    let detail = stderr.trim();
+    if detail.is_empty() {
+        format!("{} exited with {}", program, out.status)
+    } else {
+        format!("{}: {}", program, detail)
+    }
+}
+
+/// Run a command and collect its non-empty output lines. A non-zero exit is an
+/// error rather than an empty list, so an unreachable controller cannot be
+/// mistaken for a cluster that has none of whatever was asked for.
+async fn collect_lines(program: &str, args: Vec<String>) -> Result<Vec<String>> {
+    let out = run_cmd(program, args)
+        .await
+        .map_err(|e| color_eyre::eyre::eyre!("failed to run {}: {}", program, e))?;
+
+    if !out.status.success() {
+        color_eyre::eyre::bail!(failure_message(program, &out));
+    }
+
+    Ok(String::from_utf8_lossy(&out.stdout)
+        .lines()
+        .map(|l| l.trim().to_string())
+        .filter(|l| !l.is_empty())
+        .collect())
 }
 
 /// Parsed result of `scontrol show job <id> -o`.
@@ -90,42 +122,23 @@ pub async fn cancel_jobs(job_ids: Vec<String>) -> Result<()> {
     Ok(())
 }
 
-pub async fn list_partitions() -> Vec<String> {
-    let out = match run_cmd("sinfo", vec!["-h".into(), "-o".into(), "%R".into()]).await {
-        Ok(o) => o,
-        Err(_) => return Vec::new(),
-    };
-
-    String::from_utf8_lossy(&out.stdout)
-        .lines()
-        .map(|l| l.trim().to_string())
-        .filter(|l| !l.is_empty())
-        .collect()
+pub async fn list_partitions() -> Result<Vec<String>> {
+    collect_lines("sinfo", vec!["-h".into(), "-o".into(), "%R".into()]).await
 }
 
-pub async fn list_nodes() -> Vec<String> {
-    let out = match run_cmd(
+pub async fn list_nodes() -> Result<Vec<String>> {
+    let mut nodes = collect_lines(
         "sinfo",
         vec!["-h".into(), "-N".into(), "-o".into(), "%N".into()],
     )
-    .await
-    {
-        Ok(o) => o,
-        Err(_) => return Vec::new(),
-    };
-
-    let mut nodes: Vec<String> = String::from_utf8_lossy(&out.stdout)
-        .lines()
-        .map(|l| l.trim().to_string())
-        .filter(|l| !l.is_empty())
-        .collect();
+    .await?;
     nodes.sort();
     nodes.dedup();
-    nodes
+    Ok(nodes)
 }
 
-pub async fn list_qos() -> Vec<String> {
-    let out = match run_cmd(
+pub async fn list_qos() -> Result<Vec<String>> {
+    collect_lines(
         "sacctmgr",
         vec![
             "-n".into(),
@@ -135,16 +148,61 @@ pub async fn list_qos() -> Vec<String> {
         ],
     )
     .await
-    {
-        Ok(o) if o.status.success() => o,
-        // No accounting DB / QoS on this cluster: show an empty list rather
-        // than inventing site-specific names that don't exist here.
-        _ => return Vec::new(),
-    };
+}
 
-    String::from_utf8_lossy(&out.stdout)
-        .lines()
-        .map(|l| l.trim().to_string())
-        .filter(|l| !l.is_empty())
-        .collect()
+#[cfg(all(test, unix))]
+mod tests {
+    use super::*;
+
+    fn block_on<F: std::future::Future>(fut: F) -> F::Output {
+        tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap()
+            .block_on(fut)
+    }
+
+    fn sh(script: &str) -> Result<Vec<String>> {
+        block_on(collect_lines("sh", vec!["-c".into(), script.into()]))
+    }
+
+    #[test]
+    fn collects_the_non_empty_output_lines() {
+        let lines = sh("printf 'gpu\\n\\n  cpu  \\n'").unwrap();
+        assert_eq!(lines, vec!["gpu", "cpu"]);
+    }
+
+    #[test]
+    fn a_non_zero_exit_is_an_error_not_an_empty_list() {
+        let err =
+            sh("echo 'slurm_load_partitions: Unable to contact slurm controller' >&2; exit 1")
+                .unwrap_err();
+        assert!(
+            err.to_string()
+                .contains("Unable to contact slurm controller"),
+            "error was {}",
+            err
+        );
+    }
+
+    #[test]
+    fn a_silent_failure_reports_the_exit_status() {
+        let err = sh("exit 2").unwrap_err();
+        assert!(err.to_string().contains("exited with"), "error was {}", err);
+    }
+
+    #[test]
+    fn a_cluster_with_nothing_to_list_is_still_ok() {
+        assert_eq!(sh("true").unwrap(), Vec::<String>::new());
+    }
+
+    #[test]
+    fn a_missing_command_is_an_error() {
+        let err = block_on(collect_lines("sqwatch-no-such-command", Vec::new())).unwrap_err();
+        assert!(
+            err.to_string().contains("failed to run"),
+            "error was {}",
+            err
+        );
+    }
 }
