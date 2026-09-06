@@ -1,5 +1,7 @@
 # sqwatch - SLURM Queue Watcher
 
+[![Built With Ratatui](https://ratatui.rs/built-with-ratatui/badge.svg)](https://ratatui.rs/)
+
 A lightweight terminal UI for watching and managing SLURM job queues in real time.
 
 `sqwatch` gives you a live, interactive dashboard for your SLURM cluster right in the terminal. You can browse jobs, read their scripts and logs, filter by any field, and cancel jobs without leaving the command line.
