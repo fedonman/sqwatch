@@ -90,9 +90,15 @@ impl Dashboard {
             .build()
             .expect("tokio runtime init failed");
 
+        // A config file that is present but unreadable must not pass for a
+        // first run: say so, and leave the file alone until the user saves.
+        let mut config_errors = Vec::new();
+
         let mut params = QueryParams::default();
-        if let Some(saved) = load_filters() {
-            saved.apply_to(&mut params);
+        match load_filters() {
+            Ok(Some(saved)) => saved.apply_to(&mut params),
+            Ok(None) => {}
+            Err(e) => config_errors.push(e),
         }
 
         // Drop any saved regex that no longer compiles so the runtime filter
@@ -113,7 +119,7 @@ impl Dashboard {
         let known_nodes = rt.block_on(list_nodes());
         let known_states = JobState::all_known();
 
-        let (visible_fields, sort_fields) = load_columns().unwrap_or_else(|| {
+        let default_columns = || {
             (
                 JobField::defaults(),
                 vec![OrderedField {
@@ -121,13 +127,31 @@ impl Dashboard {
                     direction: SortDirection::Asc,
                 }],
             )
-        });
+        };
+        let (visible_fields, sort_fields) = match load_columns() {
+            Ok(Some(saved)) => saved,
+            Ok(None) => default_columns(),
+            Err(e) => {
+                config_errors.push(e);
+                default_columns()
+            }
+        };
 
-        let refresh_secs = load_settings()
-            .map(|s| s.refresh_secs.clamp(1, 60))
-            .unwrap_or(3);
+        let refresh_secs = match load_settings() {
+            Ok(saved) => saved.map(|s| s.refresh_secs.clamp(1, 60)).unwrap_or(3),
+            Err(e) => {
+                config_errors.push(e);
+                3
+            }
+        };
 
-        let visible_widgets = load_layout().unwrap_or_default();
+        let visible_widgets = match load_layout() {
+            Ok(saved) => saved.unwrap_or_default(),
+            Err(e) => {
+                config_errors.push(e);
+                VisibleWidgets::default()
+            }
+        };
         let custom_widgets = visible_widgets
             .custom
             .iter()
@@ -135,7 +159,7 @@ impl Dashboard {
             .map(|(i, def)| CustomOutputWidget::new(i, def.title.clone(), def.filename.clone()))
             .collect();
 
-        Ok(Self {
+        let mut dashboard = Self {
             alive: true,
             input: InputLoop::start(InputConfig::default()),
             table: JobTable::new(),
@@ -166,7 +190,13 @@ impl Dashboard {
             job_detail_resolver: JobDetailResolver::new(),
             job_fetcher: JobFetcher::new(),
             pending_filter_apply: false,
-        })
+        };
+
+        if !config_errors.is_empty() {
+            dashboard.flash(config_errors.join("; "), 10);
+        }
+
+        Ok(dashboard)
     }
 
     pub fn run<B: ratatui::backend::Backend>(
