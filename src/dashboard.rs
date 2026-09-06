@@ -1003,17 +1003,40 @@ impl Dashboard {
         }
     }
 
-    fn rebuild_format(&mut self) {
-        let mut codes: Vec<&str> = self
-            .visible_fields
-            .iter()
-            .map(|f| f.format_code())
-            .collect();
+    /// The `squeue --format` codes for a query. Fields that are read after the
+    /// fetch instead of being displayed - the working directory a custom widget
+    /// resolves, and the two regex filters that run client side - are appended
+    /// when their column is hidden, so turning a column off never stops its
+    /// value being fetched.
+    fn format_codes(
+        visible: &[JobField],
+        needs_work_dir: bool,
+        needs_user: bool,
+        needs_name: bool,
+    ) -> Vec<&'static str> {
+        let mut codes: Vec<&'static str> = visible.iter().map(|f| f.format_code()).collect();
 
-        // Ensure %Z (WorkDir) is present when custom widgets need it
-        if self.visible_widgets.custom.iter().any(|c| c.visible) && !codes.contains(&"%Z") {
-            codes.push("%Z");
+        for (needed, code) in [
+            (needs_work_dir, "%Z"),
+            (needs_user, "%u"),
+            (needs_name, "%j"),
+        ] {
+            if needed && !codes.contains(&code) {
+                codes.push(code);
+            }
         }
+
+        codes
+    }
+
+    fn rebuild_format(&mut self) {
+        let active = |pattern: &Option<String>| pattern.as_deref().is_some_and(|p| !p.is_empty());
+        let codes = Self::format_codes(
+            &self.visible_fields,
+            self.visible_widgets.custom.iter().any(|c| c.visible),
+            active(&self.params.user),
+            active(&self.params.name_pattern),
+        );
 
         self.params.fmt = codes.join(FIELD_SEP);
 
@@ -1115,6 +1138,7 @@ fn help_lines() -> Vec<Line<'static>> {
 mod tests {
     use super::*;
     use crate::backend::Job;
+    use crate::backend::query::decode_squeue_output;
 
     fn job_with_user(user: &str) -> Job {
         Job {
@@ -1155,5 +1179,60 @@ mod tests {
     fn regex_filter_errors_on_invalid_pattern() {
         let mut jobs = vec![job_with_user("alice")];
         assert!(Dashboard::apply_regex_filter(&mut jobs, "[", |j| &j.user).is_err());
+    }
+
+    #[test]
+    fn format_codes_follow_the_visible_columns() {
+        let codes = Dashboard::format_codes(&[JobField::Id, JobField::State], false, false, false);
+        assert_eq!(codes, vec!["%i", "%T"]);
+    }
+
+    #[test]
+    fn a_hidden_user_column_is_still_fetched_for_the_filter() {
+        let codes = Dashboard::format_codes(&[JobField::Id], false, true, false);
+        assert!(codes.contains(&"%u"), "codes were {:?}", codes);
+    }
+
+    #[test]
+    fn a_hidden_name_column_is_still_fetched_for_the_filter() {
+        let codes = Dashboard::format_codes(&[JobField::Id], false, false, true);
+        assert!(codes.contains(&"%j"), "codes were {:?}", codes);
+    }
+
+    #[test]
+    fn a_visible_column_is_not_requested_twice() {
+        let codes = Dashboard::format_codes(
+            &[
+                JobField::Id,
+                JobField::User,
+                JobField::Name,
+                JobField::WorkDir,
+            ],
+            true,
+            true,
+            true,
+        );
+        assert_eq!(
+            codes,
+            vec!["%i", "%u", "%j", "%Z"],
+            "forced codes should not duplicate visible ones"
+        );
+    }
+
+    #[test]
+    fn user_filter_still_matches_when_the_column_is_hidden() {
+        let codes = Dashboard::format_codes(&[JobField::Id, JobField::State], false, true, false);
+        let fmt = codes.join(FIELD_SEP);
+        let raw = format!(
+            "1{sep}RUNNING{sep}alice\n2{sep}RUNNING{sep}bob\n",
+            sep = FIELD_SEP
+        );
+
+        let mut jobs = decode_squeue_output(&raw, &fmt);
+        assert_eq!(jobs.len(), 2);
+
+        Dashboard::apply_regex_filter(&mut jobs, "alice", |j| &j.user).unwrap();
+        assert_eq!(jobs.len(), 1);
+        assert_eq!(jobs[0].user, "alice");
     }
 }
