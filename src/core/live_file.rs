@@ -186,6 +186,14 @@ impl IncrementalReader {
 
     fn read_new_content(&mut self) -> Result<(), SendError<io::Result<String>>> {
         let result = File::open(&self.target).and_then(|mut fh| {
+            // A truncated or rewritten log is shorter than what has already been
+            // read. Seeking past the end of a file is not an error, so without
+            // this check the read returns nothing and the pane keeps showing the
+            // content from before the truncation.
+            if fh.metadata()?.len() < self.offset {
+                self.offset = 0;
+                self.buffer.clear();
+            }
             self.offset = fh.seek(io::SeekFrom::Start(self.offset))?;
             self.offset += fh.read_to_string(&mut self.buffer)? as u64;
             Ok(self.buffer.clone())
@@ -211,5 +219,94 @@ impl LiveFileMonitor {
             self.tracked_path = path.clone();
             let _ = self.channel.send(MonitorMsg::WatchPath(path));
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::{
+        env, fs,
+        sync::atomic::{AtomicU32, Ordering},
+    };
+
+    /// A file in the temp directory that removes itself when the test ends.
+    struct TempLog(PathBuf);
+
+    impl TempLog {
+        fn with(contents: &str) -> Self {
+            static COUNTER: AtomicU32 = AtomicU32::new(0);
+            let n = COUNTER.fetch_add(1, Ordering::Relaxed);
+            let path =
+                env::temp_dir().join(format!("sqwatch-tail-{}-{}.log", std::process::id(), n));
+            fs::write(&path, contents).unwrap();
+            TempLog(path)
+        }
+
+        fn rewrite(&self, contents: &str) {
+            fs::write(&self.0, contents).unwrap();
+        }
+    }
+
+    impl Drop for TempLog {
+        fn drop(&mut self) {
+            let _ = fs::remove_file(&self.0);
+        }
+    }
+
+    /// A reader wired up for direct `read_new_content` calls; the notify channel
+    /// is only read by `read_loop`, which these tests do not run.
+    fn reader_for(path: &Path) -> (IncrementalReader, Receiver<io::Result<String>>) {
+        let (sink, out) = unbounded();
+        let (_, notify_rx) = unbounded();
+        let reader = IncrementalReader::create(
+            sink,
+            notify_rx,
+            path.to_path_buf(),
+            Duration::from_millis(10),
+        );
+        (reader, out)
+    }
+
+    #[test]
+    fn reads_appended_content_incrementally() {
+        let log = TempLog::with("line one\n");
+        let (mut reader, out) = reader_for(&log.0);
+
+        reader.read_new_content().unwrap();
+        assert_eq!(out.recv().unwrap().unwrap(), "line one\n");
+
+        log.rewrite("line one\nline two\n");
+        reader.read_new_content().unwrap();
+        assert_eq!(out.recv().unwrap().unwrap(), "line one\nline two\n");
+    }
+
+    #[test]
+    fn truncated_file_replaces_the_buffer_instead_of_repeating_it() {
+        let log = TempLog::with("line one\nline two\nline three\n");
+        let (mut reader, out) = reader_for(&log.0);
+
+        reader.read_new_content().unwrap();
+        assert_eq!(
+            out.recv().unwrap().unwrap(),
+            "line one\nline two\nline three\n"
+        );
+
+        log.rewrite("RESTARTED\n");
+        reader.read_new_content().unwrap();
+        assert_eq!(out.recv().unwrap().unwrap(), "RESTARTED\n");
+    }
+
+    #[test]
+    fn an_emptied_file_empties_the_pane() {
+        let log = TempLog::with("some output\n");
+        let (mut reader, out) = reader_for(&log.0);
+
+        reader.read_new_content().unwrap();
+        assert_eq!(out.recv().unwrap().unwrap(), "some output\n");
+
+        log.rewrite("");
+        reader.read_new_content().unwrap();
+        assert_eq!(out.recv().unwrap().unwrap(), "");
     }
 }

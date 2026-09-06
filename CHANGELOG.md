@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- Log panes now catch up with a file that has been truncated or rewritten shorter — a requeue or a rotation — instead of showing the content from before the truncation indefinitely.
+
 ## [0.2.0] - 2026-08-28
 
 ### Added
