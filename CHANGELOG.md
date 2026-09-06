@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- `scontrol` values containing a space are no longer cut at the space, so a job whose working directory, script or log path has a space in it now opens the right file instead of waiting forever on a path that does not exist.
+
 ## [0.2.0] - 2026-08-28
 
 ### Added
