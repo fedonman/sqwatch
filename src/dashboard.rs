@@ -108,9 +108,16 @@ impl Dashboard {
             params.name_pattern = None;
         }
 
-        let known_partitions = rt.block_on(list_partitions());
-        let known_qos = rt.block_on(list_qos());
-        let known_nodes = rt.block_on(list_nodes());
+        // An empty sidebar section is a real answer on some clusters, so a
+        // failed probe has to say so rather than blend in with one.
+        let mut probe_errors = Vec::new();
+        let known_partitions = Self::probe(
+            "partitions",
+            rt.block_on(list_partitions()),
+            &mut probe_errors,
+        );
+        let known_qos = Self::probe("QoS", rt.block_on(list_qos()), &mut probe_errors);
+        let known_nodes = Self::probe("nodes", rt.block_on(list_nodes()), &mut probe_errors);
         let known_states = JobState::all_known();
 
         let (visible_fields, sort_fields) = load_columns().unwrap_or_else(|| {
@@ -135,7 +142,7 @@ impl Dashboard {
             .map(|(i, def)| CustomOutputWidget::new(i, def.title.clone(), def.filename.clone()))
             .collect();
 
-        Ok(Self {
+        let mut dashboard = Self {
             alive: true,
             input: InputLoop::start(InputConfig::default()),
             table: JobTable::new(),
@@ -166,7 +173,24 @@ impl Dashboard {
             job_detail_resolver: JobDetailResolver::new(),
             job_fetcher: JobFetcher::new(),
             pending_filter_apply: false,
-        })
+        };
+
+        if !probe_errors.is_empty() {
+            dashboard.flash(probe_errors.join("; "), 10);
+        }
+
+        Ok(dashboard)
+    }
+
+    /// Keep a startup probe's list, or note why the sidebar section is empty.
+    fn probe(label: &str, result: Result<Vec<String>>, errors: &mut Vec<String>) -> Vec<String> {
+        match result {
+            Ok(values) => values,
+            Err(e) => {
+                errors.push(format!("no {} ({})", label, e));
+                Vec::new()
+            }
+        }
     }
 
     pub fn run<B: ratatui::backend::Backend>(

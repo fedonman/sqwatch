@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- A failing `sinfo`, `sacctmgr` or `squeue` is reported instead of being read as a cluster that has no partitions, nodes or QoS. Startup now stops with the message `squeue` printed, and a probe that fails once the app is up says so in the flash bar rather than leaving the sidebar quietly empty.
+
 ## [0.2.0] - 2026-08-28
 
 ### Added
