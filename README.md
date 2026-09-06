@@ -1,5 +1,9 @@
 # sqwatch - SLURM Queue Watcher
 
+[![crates.io](https://img.shields.io/crates/v/sqwatch.svg)](https://crates.io/crates/sqwatch)
+[![CI](https://github.com/fedonman/sqwatch/actions/workflows/ci.yml/badge.svg)](https://github.com/fedonman/sqwatch/actions/workflows/ci.yml)
+[![MSRV](https://img.shields.io/crates/msrv/sqwatch.svg)](https://github.com/fedonman/sqwatch#requirements)
+[![License](https://img.shields.io/crates/l/sqwatch.svg)](LICENSE)
 [![Built With Ratatui](https://ratatui.rs/built-with-ratatui/badge.svg)](https://ratatui.rs/)
 
 A lightweight terminal UI for watching and managing SLURM job queues in real time.
