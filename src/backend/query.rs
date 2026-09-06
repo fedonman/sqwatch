@@ -192,7 +192,11 @@ pub fn decode_squeue_output(raw: &str, fmt: &str) -> Vec<Job> {
                 "%V" => job.submit_time = Some(val),
                 "%S" => job.start_time = Some(val),
                 "%e" => job.end_time = Some(val),
-                "%R" => job.reason = Some(val),
+                // squeue prints "None" when a job has no reason, which the
+                // table shows as the same "-" placeholder as any other unset
+                // cell. %R is deliberately not accepted here: it returns the
+                // nodelist for anything that is not pending or failed.
+                "%r" => job.reason = (val != "None").then_some(val),
                 _ => {}
             }
         }
