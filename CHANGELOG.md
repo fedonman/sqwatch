@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- The username and job-name filters now work whether or not their column is on screen. Hiding a column stopped its field being fetched, so the regex ran against an empty value and emptied the table while reporting success.
+
 ## [0.2.0] - 2026-08-28
 
 ### Added
