@@ -59,7 +59,7 @@ fn blank_lines_are_skipped() {
 }
 
 /// Every column the UI can request must decode into a field; otherwise the
-/// column silently renders empty (the bug the `%R` column once had).
+/// column silently renders empty.
 #[test]
 fn every_field_code_is_decoded() {
     for field in JobField::enumerate() {
@@ -76,4 +76,27 @@ fn every_field_code_is_decoded() {
             field
         );
     }
+}
+
+/// `%R` is dual purpose: for a running job it returns the allocated nodes,
+/// so a Reason column built on it just repeats the Node column.
+#[test]
+fn the_reason_column_asks_for_the_single_purpose_code() {
+    assert_eq!(JobField::PendReason.format_code(), "%r");
+}
+
+#[test]
+fn reason_decodes_for_a_pending_job() {
+    let raw = line(&["1002", "N/A", "Priority"]);
+    let jobs = decode_squeue_output(&raw, &["%i", "%N", "%r"].join(FIELD_SEP));
+    assert_eq!(jobs[0].reason.as_deref(), Some("Priority"));
+}
+
+/// `squeue` writes "None" rather than an empty cell for a job with no reason,
+/// and the table shows an unset reason as the same "-" as any other blank.
+#[test]
+fn a_reason_of_none_reads_as_unset() {
+    let raw = line(&["1001", "None"]);
+    let jobs = decode_squeue_output(&raw, &["%i", "%r"].join(FIELD_SEP));
+    assert_eq!(jobs[0].reason, None);
 }
