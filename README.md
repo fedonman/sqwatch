@@ -1,3 +1,5 @@
+![sqwatch, SLURM Queue Watcher: a rat peering through binoculars over a terminal window of jobs](assets/banner.png)
+
 # sqwatch - SLURM Queue Watcher
 
 [![crates.io](https://img.shields.io/crates/v/sqwatch.svg)](https://crates.io/crates/sqwatch)
