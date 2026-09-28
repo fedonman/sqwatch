@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- Config files are written through a temp file and a rename, so an interrupted save leaves the previous file whole instead of truncated in place.
+- A config file that is present but cannot be read or parsed is reported at startup instead of being treated as a first run and silently replaced with defaults.
+
 ## [0.2.0] - 2026-08-28
 
 ### Added
