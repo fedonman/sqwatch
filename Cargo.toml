@@ -10,6 +10,7 @@ license = "Apache-2.0"
 rust-version = "1.90"
 include = [
     "**/*.rs",
+    "tests/fixtures/**",
     "README.md",
     "LICENSE"
 ]
