@@ -78,7 +78,7 @@ impl JobField {
             JobField::SubmitTime => "%V",
             JobField::StartTime => "%S",
             JobField::EndTime => "%e",
-            JobField::PendReason => "%R",
+            JobField::PendReason => "%r",
         }
     }
 
