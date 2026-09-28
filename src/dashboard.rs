@@ -213,6 +213,7 @@ impl Dashboard {
             dashboard.flash(startup_errors.join("; "), 10);
         }
 
+        dashboard.reload_jobs_sync()?;
         Ok(dashboard)
     }
 
@@ -234,8 +235,6 @@ impl Dashboard {
     where
         B::Error: Send + Sync + 'static,
     {
-        self.reload_jobs_sync()?;
-
         while self.alive {
             terminal.draw(|f| self.draw(f))?;
             self.process_input()?;

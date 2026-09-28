@@ -72,6 +72,17 @@ fn main() -> Result<()> {
         previous_hook(info);
     }));
 
+    // Build the dashboard, which runs the startup SLURM queries, before the
+    // terminal is claimed: a slow or failing query then leaves a normal
+    // terminal, where Ctrl+C works and the error can be read.
+    let mut app = match Dashboard::new() {
+        Ok(app) => app,
+        Err(err) => {
+            eprintln!("{}", err);
+            std::process::exit(1);
+        }
+    };
+
     enable_raw_mode()?;
     execute!(io::stdout(), EnterAlternateScreen, EnableMouseCapture)?;
     let _guard = TerminalGuard;
@@ -79,7 +90,7 @@ fn main() -> Result<()> {
     let term_backend = CrosstermBackend::new(io::stdout());
     let mut terminal = Terminal::new(term_backend)?;
 
-    let outcome = Dashboard::new().and_then(|mut app| app.run(&mut terminal));
+    let outcome = app.run(&mut terminal);
 
     // Restore before printing any error so the report is readable.
     drop(_guard);
