@@ -6,10 +6,14 @@ use ratatui::{
     text::Line,
     widgets::{Block, BorderType, Borders, Clear, List, ListItem, ListState, Paragraph},
 };
+use serde::{Deserialize, Serialize};
 
 use super::theme::{ACCENT, DIM_BORDER, POPUP_BG};
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+/// A column of the job table. `columns.json` stores the variant name, so a
+/// heading can be reworded freely but renaming a variant drops it from every
+/// saved layout.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum JobField {
     Id,
     Name,

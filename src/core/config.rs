@@ -130,16 +130,44 @@ pub fn save_filters(params: &QueryParams) -> Result<(), String> {
 /// The visible columns in order, paired with the sort keys applied to them.
 pub type ColumnLayout = (Vec<JobField>, Vec<OrderedField>);
 
+/// A column as `columns.json` stores it: the `JobField` variant name. Any other
+/// string is kept as it is, so one entry that matches nothing does not fail the
+/// whole file.
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(untagged)]
+pub enum SavedField {
+    Known(JobField),
+    Other(String),
+}
+
+impl SavedField {
+    fn resolve(&self) -> Result<JobField, &str> {
+        match self {
+            SavedField::Known(field) => Ok(*field),
+            // Older files store the heading instead. These are the headings
+            // that differ from their variant name; the rest match it.
+            SavedField::Other(name) => match name.as_str() {
+                "ID" => Ok(JobField::Id),
+                "Submit" => Ok(JobField::SubmitTime),
+                "Start" => Ok(JobField::StartTime),
+                "End" => Ok(JobField::EndTime),
+                "Reason" => Ok(JobField::PendReason),
+                _ => Err(name),
+            },
+        }
+    }
+}
+
 #[derive(Debug, Serialize, Deserialize)]
 pub struct SavedSort {
-    field: String,
+    field: SavedField,
     direction: String,
 }
 
 #[derive(Debug, Default, Serialize, Deserialize)]
 pub struct SavedColumns {
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub columns: Vec<String>,
+    pub columns: Vec<SavedField>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub sort: Vec<SavedSort>,
 }
@@ -147,11 +175,11 @@ pub struct SavedColumns {
 impl SavedColumns {
     pub fn from_fields(active: &[JobField], sort_list: &[OrderedField]) -> Self {
         Self {
-            columns: active.iter().map(|f| f.heading().to_string()).collect(),
+            columns: active.iter().copied().map(SavedField::Known).collect(),
             sort: sort_list
                 .iter()
                 .map(|of| SavedSort {
-                    field: of.field.heading().to_string(),
+                    field: SavedField::Known(of.field),
                     direction: match of.direction {
                         SortDirection::Asc => "asc".to_string(),
                         SortDirection::Desc => "desc".to_string(),
@@ -161,21 +189,27 @@ impl SavedColumns {
         }
     }
 
-    pub fn to_fields(&self) -> Option<ColumnLayout> {
-        let all = JobField::enumerate();
-        let lookup =
-            |name: &str| -> Option<JobField> { all.iter().find(|f| f.heading() == name).copied() };
+    /// The saved layout, or `None` when no saved column is known, along with
+    /// the saved names that match no column and were left out.
+    pub fn to_fields(&self) -> (Option<ColumnLayout>, Vec<String>) {
+        let mut unknown: Vec<String> = Vec::new();
+        let mut resolve = |saved: &SavedField| match saved.resolve() {
+            Ok(field) => Some(field),
+            Err(name) => {
+                if !unknown.iter().any(|n| n == name) {
+                    unknown.push(name.to_string());
+                }
+                None
+            }
+        };
 
-        let columns: Vec<JobField> = self.columns.iter().filter_map(|n| lookup(n)).collect();
-        if columns.is_empty() {
-            return None;
-        }
+        let columns: Vec<JobField> = self.columns.iter().filter_map(&mut resolve).collect();
 
         let sort_list: Vec<OrderedField> = self
             .sort
             .iter()
             .filter_map(|s| {
-                let field = lookup(&s.field)?;
+                let field = resolve(&s.field)?;
                 let direction = match s.direction.as_str() {
                     "desc" => SortDirection::Desc,
                     _ => SortDirection::Asc,
@@ -184,7 +218,8 @@ impl SavedColumns {
             })
             .collect();
 
-        Some((columns, sort_list))
+        let layout = (!columns.is_empty()).then_some((columns, sort_list));
+        (layout, unknown)
     }
 }
 
@@ -192,8 +227,11 @@ fn columns_path() -> PathBuf {
     sqwatch_config_dir().join("columns.json")
 }
 
-pub fn load_columns() -> Result<Option<ColumnLayout>, String> {
-    Ok(load_json::<SavedColumns>(&columns_path())?.and_then(|saved| saved.to_fields()))
+/// Load the saved column layout, with the saved names that match no column.
+pub fn load_columns() -> Result<(Option<ColumnLayout>, Vec<String>), String> {
+    Ok(load_json::<SavedColumns>(&columns_path())?
+        .map(|saved| saved.to_fields())
+        .unwrap_or_default())
 }
 
 pub fn save_columns(active: &[JobField], sort_list: &[OrderedField]) -> Result<(), String> {
@@ -392,5 +430,83 @@ mod tests {
 
         assert!(write_atomically(&path, "replacement").is_err());
         assert_eq!(fs::read_to_string(&path).unwrap(), r#"{"refresh_secs": 7}"#);
+    }
+
+    fn parse_columns(json: &str) -> (Option<ColumnLayout>, Vec<String>) {
+        serde_json::from_str::<SavedColumns>(json)
+            .unwrap()
+            .to_fields()
+    }
+
+    #[test]
+    fn columns_are_saved_by_variant_name() {
+        let columns = JobField::enumerate();
+        let sort = vec![OrderedField {
+            field: JobField::PendReason,
+            direction: SortDirection::Desc,
+        }];
+
+        let json = serde_json::to_string(&SavedColumns::from_fields(&columns, &sort)).unwrap();
+        assert!(json.contains(r#""PendReason""#), "json was {}", json);
+
+        let (layout, unknown) = parse_columns(&json);
+        assert_eq!(layout, Some((columns, sort)));
+        assert!(unknown.is_empty());
+    }
+
+    #[test]
+    fn a_file_saved_with_headings_still_loads() {
+        let (layout, unknown) = parse_columns(
+            r#"{"columns": ["ID", "Name", "Submit", "Start", "End", "Reason"],
+                "sort": [{"field": "Reason", "direction": "desc"}]}"#,
+        );
+
+        let (columns, sort) = layout.unwrap();
+        assert_eq!(
+            columns,
+            vec![
+                JobField::Id,
+                JobField::Name,
+                JobField::SubmitTime,
+                JobField::StartTime,
+                JobField::EndTime,
+                JobField::PendReason,
+            ]
+        );
+        assert_eq!(
+            sort,
+            vec![OrderedField {
+                field: JobField::PendReason,
+                direction: SortDirection::Desc,
+            }]
+        );
+        assert!(unknown.is_empty());
+    }
+
+    #[test]
+    fn unknown_columns_are_reported_and_the_rest_kept() {
+        let (layout, unknown) = parse_columns(
+            r#"{"columns": ["Id", "Name", "Nodelist", "Pending Reason"],
+                "sort": [{"field": "Nodelist", "direction": "desc"},
+                         {"field": "Name", "direction": "asc"}]}"#,
+        );
+
+        let (columns, sort) = layout.unwrap();
+        assert_eq!(columns, vec![JobField::Id, JobField::Name]);
+        assert_eq!(
+            sort,
+            vec![OrderedField {
+                field: JobField::Name,
+                direction: SortDirection::Asc,
+            }]
+        );
+        assert_eq!(unknown, vec!["Nodelist", "Pending Reason"]);
+    }
+
+    #[test]
+    fn no_known_column_falls_back_but_still_reports() {
+        let (layout, unknown) = parse_columns(r#"{"columns": ["Nodelist"]}"#);
+        assert!(layout.is_none());
+        assert_eq!(unknown, vec!["Nodelist"]);
     }
 }

@@ -129,8 +129,15 @@ impl Dashboard {
             )
         };
         let (visible_fields, sort_fields) = match load_columns() {
-            Ok(Some(saved)) => saved,
-            Ok(None) => default_columns(),
+            Ok((saved, unknown)) => {
+                if !unknown.is_empty() {
+                    config_errors.push(format!(
+                        "Saved columns that no longer exist were left out: {}",
+                        unknown.join(", ")
+                    ));
+                }
+                saved.unwrap_or_else(default_columns)
+            }
             Err(e) => {
                 config_errors.push(e);
                 default_columns()
