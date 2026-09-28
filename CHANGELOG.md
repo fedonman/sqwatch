@@ -15,6 +15,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Log panes now catch up with a file that has been truncated or rewritten shorter — a requeue or a rotation — instead of showing the content from before the truncation indefinitely.
 - The username and job-name filters now work whether or not their column is on screen. Hiding a column stopped its field being fetched, so the regex ran against an empty value and emptied the table while reporting success.
 - `scontrol` values containing a space are no longer cut at the space, so a job whose working directory, script or log path has a space in it now opens the right file instead of waiting forever on a path that does not exist.
+- A failing `sinfo`, `sacctmgr` or `squeue` is reported instead of being read as a cluster that has no partitions, nodes or QoS. Startup now stops with the message `squeue` printed, and a probe that fails once the app is up says so in the flash bar rather than leaving the sidebar quietly empty.
 
 ## [0.2.0] - 2026-08-28
 

@@ -114,9 +114,16 @@ impl Dashboard {
             params.name_pattern = None;
         }
 
-        let known_partitions = rt.block_on(list_partitions());
-        let known_qos = rt.block_on(list_qos());
-        let known_nodes = rt.block_on(list_nodes());
+        // An empty sidebar section is a real answer on some clusters, so a
+        // failed probe has to say so rather than blend in with one.
+        let mut probe_errors = Vec::new();
+        let known_partitions = Self::probe(
+            "partitions",
+            rt.block_on(list_partitions()),
+            &mut probe_errors,
+        );
+        let known_qos = Self::probe("QoS", rt.block_on(list_qos()), &mut probe_errors);
+        let known_nodes = Self::probe("nodes", rt.block_on(list_nodes()), &mut probe_errors);
         let known_states = JobState::all_known();
 
         let default_columns = || {
@@ -199,11 +206,25 @@ impl Dashboard {
             pending_filter_apply: false,
         };
 
-        if !config_errors.is_empty() {
-            dashboard.flash(config_errors.join("; "), 10);
+        // One flash for everything startup found wrong: a second call would
+        // replace the first message rather than add to it.
+        let startup_errors: Vec<String> = config_errors.into_iter().chain(probe_errors).collect();
+        if !startup_errors.is_empty() {
+            dashboard.flash(startup_errors.join("; "), 10);
         }
 
         Ok(dashboard)
+    }
+
+    /// Keep a startup probe's list, or note why the sidebar section is empty.
+    fn probe(label: &str, result: Result<Vec<String>>, errors: &mut Vec<String>) -> Vec<String> {
+        match result {
+            Ok(values) => values,
+            Err(e) => {
+                errors.push(format!("no {} ({})", label, e));
+                Vec::new()
+            }
+        }
     }
 
     pub fn run<B: ratatui::backend::Backend>(
