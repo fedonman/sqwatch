@@ -10,6 +10,18 @@ use std::io;
 
 use sqwatch::dashboard::Dashboard;
 
+const USAGE: &str = concat!(
+    env!("CARGO_PKG_DESCRIPTION"),
+    "
+
+Usage: sqwatch [OPTIONS]
+
+Options:
+  -h, --help     Print help
+  -V, --version  Print version
+"
+);
+
 /// Restore the terminal to its normal state. Safe to call more than once.
 fn restore_terminal() {
     let _ = disable_raw_mode();
@@ -32,6 +44,24 @@ impl Drop for TerminalGuard {
 }
 
 fn main() -> Result<()> {
+    // Answer or reject any argument before the terminal is touched, so
+    // `--help` and `--version` print a string instead of opening the UI.
+    if let Some(arg) = std::env::args_os().nth(1) {
+        match arg.to_str() {
+            Some("-h" | "--help") => print!("{}", USAGE),
+            Some("-V" | "--version") => println!("sqwatch {}", env!("CARGO_PKG_VERSION")),
+            _ => {
+                eprint!(
+                    "sqwatch: unrecognized argument '{}'\n\n{}",
+                    arg.to_string_lossy(),
+                    USAGE
+                );
+                std::process::exit(2);
+            }
+        }
+        return Ok(());
+    }
+
     color_eyre::install()?;
 
     // Chain a terminal restore in front of color_eyre's panic hook so a panic
