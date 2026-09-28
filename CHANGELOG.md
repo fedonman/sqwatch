@@ -27,6 +27,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The published crate includes the test fixtures, so `cargo test` compiles and passes on it and not only in a git checkout. CI now runs the tests on the packaged crate too.
 - Log panes draw only the lines on screen instead of word-wrapping the whole log twice on every frame, so scrolling and typing no longer slow down as a log grows. The full wrap runs once when a log is opened or the pane is resized, and only new lines are wrapped as the log grows. Follow mode also no longer leaves two blank rows under the last line.
 - A job whose `scontrol show job` lookup fails is no longer looked up again on every frame, which forked an `scontrol` process per redraw for as long as the cursor stayed on it. The failure is remembered and the job is tried again after 10 seconds, so a passing controller hiccup still clears up.
+- Hiding a log pane stops its file watch. The watch kept running and sent a copy of the whole log into a queue every second that nothing read while the pane was hidden, so memory grew by the size of the log every second.
 
 ## [0.2.0] - 2026-08-28
 

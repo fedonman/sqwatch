@@ -479,10 +479,28 @@ impl Dashboard {
             let name = job.name.clone();
             let work_dir = job.work_dir.clone();
             self.script.ensure_job(&id, &name);
-            self.stdout_widget.ensure_job(&id);
-            self.stderr_widget.ensure_job(&id);
-            for cw in &mut self.custom_widgets {
-                cw.ensure_job(&id, work_dir.as_deref());
+            // A hidden log pane is cleared rather than kept in step, so it
+            // stops watching a file that `on_timer` does not drain.
+            if self.visible_widgets.stdout {
+                self.stdout_widget.ensure_job(&id);
+            } else {
+                self.stdout_widget.clear_job();
+            }
+            if self.visible_widgets.stderr {
+                self.stderr_widget.ensure_job(&id);
+            } else {
+                self.stderr_widget.clear_job();
+            }
+            for (cw, def) in self
+                .custom_widgets
+                .iter_mut()
+                .zip(&self.visible_widgets.custom)
+            {
+                if def.visible {
+                    cw.ensure_job(&id, work_dir.as_deref());
+                } else {
+                    cw.clear_job();
+                }
             }
 
             // Request detail from background resolver (no-op if cached or in-flight)
