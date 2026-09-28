@@ -12,6 +12,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Config files are written through a temp file and a rename, so an interrupted save leaves the previous file whole instead of truncated in place.
 - A config file that is present but cannot be read or parsed is reported at startup instead of being treated as a first run and silently replaced with defaults.
 - `columns.json` stores each column by a fixed name rather than the heading shown in the table, so rewording a heading no longer drops that column and its sort key from saved layouts. Existing files still load, and a saved column that matches nothing is reported at startup instead of vanishing.
+- Log panes now catch up with a file that has been truncated or rewritten shorter — a requeue or a rotation — instead of showing the content from before the truncation indefinitely.
 
 ## [0.2.0] - 2026-08-28
 
