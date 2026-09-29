@@ -30,6 +30,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Hiding a log pane stops its file watch. The watch kept running and sent a copy of the whole log into a queue every second that nothing read while the pane was hidden, so memory grew by the size of the log every second.
 - The startup SLURM queries, including the first `squeue`, run before sqwatch takes over the terminal. A slow `sinfo`, `sacctmgr` or `squeue` used to leave a blank alternate screen where Ctrl+C did nothing; now it leaves the normal terminal, where Ctrl+C works and a failure can be read.
 - A log pane no longer copies the whole log across from its reader every second. The reader sends only what was appended since the last read and nothing when the file has not changed, and it no longer keeps its own copy of the log.
+- A failing `squeue` is retried at the refresh interval instead of on every input tick, which ran it several times a second against a controller that was already not answering and rewrote the error in the flash bar too fast to read.
 
 ## [0.2.0] - 2026-08-28
 

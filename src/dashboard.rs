@@ -955,6 +955,9 @@ impl Dashboard {
                 Err(e) => {
                     self.pending_filter_apply = false;
                     self.flash(format!("Auto-refresh failed: {}", e), 3);
+                    // Wait the full interval before trying again, as after a
+                    // good fetch, instead of retrying on the next tick.
+                    self.refreshed_at = Instant::now();
                 }
             }
         }
