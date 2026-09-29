@@ -299,7 +299,7 @@ impl JobTable {
 fn state_color(s: JobState) -> Color {
     match s {
         JobState::Pending => Color::Rgb(255, 170, 50),
-        JobState::Running => Color::Rgb(50, 210, 170),
+        JobState::Running | JobState::Completing => Color::Rgb(50, 210, 170),
         JobState::Completed => Color::Rgb(120, 140, 180),
         JobState::Failed | JobState::Timeout | JobState::NodeFail | JobState::BootFail => {
             Color::Rgb(230, 70, 70)

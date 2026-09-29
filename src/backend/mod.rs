@@ -8,6 +8,7 @@ use std::str::FromStr;
 pub enum JobState {
     Pending,
     Running,
+    Completing,
     Completed,
     Failed,
     Cancelled,
@@ -25,6 +26,7 @@ impl JobState {
         vec![
             JobState::Pending,
             JobState::Running,
+            JobState::Completing,
             JobState::Completed,
             JobState::Failed,
             JobState::Cancelled,
@@ -43,6 +45,7 @@ impl fmt::Display for JobState {
         let label = match self {
             JobState::Pending => "PENDING",
             JobState::Running => "RUNNING",
+            JobState::Completing => "COMPLETING",
             JobState::Completed => "COMPLETED",
             JobState::Failed => "FAILED",
             JobState::Cancelled => "CANCELLED",
@@ -65,7 +68,8 @@ impl FromStr for JobState {
         match raw.to_uppercase().as_str() {
             "PENDING" | "PD" => Ok(JobState::Pending),
             "RUNNING" | "R" => Ok(JobState::Running),
-            "COMPLETED" | "CD" | "COMPLETING" | "CG" => Ok(JobState::Completed),
+            "COMPLETING" | "CG" => Ok(JobState::Completing),
+            "COMPLETED" | "CD" => Ok(JobState::Completed),
             "FAILED" | "F" => Ok(JobState::Failed),
             "CANCELLED" | "CA" => Ok(JobState::Cancelled),
             "TIMEOUT" | "TO" => Ok(JobState::Timeout),
@@ -152,6 +156,37 @@ mod tests {
         for st in JobState::all_known() {
             let shown = st.to_string();
             assert_eq!(JobState::from_str(&shown).unwrap(), st, "state {:?}", st);
+        }
+    }
+
+    /// The name shown for a job is what the state filter sends back to
+    /// `squeue --states`, so every code squeue prints needs a name, and a
+    /// filter box, of its own.
+    #[test]
+    fn each_state_code_has_its_own_name_and_filter() {
+        let codes = [
+            ("PENDING", "PD"),
+            ("RUNNING", "R"),
+            ("COMPLETING", "CG"),
+            ("COMPLETED", "CD"),
+            ("FAILED", "F"),
+            ("CANCELLED", "CA"),
+            ("TIMEOUT", "TO"),
+            ("NODE_FAIL", "NF"),
+            ("PREEMPTED", "PR"),
+            ("BOOT_FAIL", "BF"),
+            ("SUSPENDED", "S"),
+            ("OUT_OF_MEMORY", "OOM"),
+        ];
+        for (long, short) in codes {
+            let state = JobState::from_str(short).unwrap();
+            assert_eq!(state.to_string(), long, "code {}", short);
+            assert_eq!(JobState::from_str(long).unwrap(), state);
+            assert!(
+                JobState::all_known().contains(&state),
+                "{} has no filter",
+                long
+            );
         }
     }
 }
