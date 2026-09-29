@@ -52,6 +52,9 @@ struct IncrementalReader {
     target: PathBuf,
     poll_interval: Duration,
     buffer: String,
+    /// The start of a character cut off by the end of the last read, which
+    /// the next read completes.
+    partial: Vec<u8>,
     offset: u64,
 }
 
@@ -168,6 +171,7 @@ impl IncrementalReader {
             target,
             poll_interval,
             buffer: String::new(),
+            partial: Vec::new(),
             offset: 0,
         }
     }
@@ -193,12 +197,37 @@ impl IncrementalReader {
             if fh.metadata()?.len() < self.offset {
                 self.offset = 0;
                 self.buffer.clear();
+                self.partial.clear();
             }
             self.offset = fh.seek(io::SeekFrom::Start(self.offset))?;
-            self.offset += fh.read_to_string(&mut self.buffer)? as u64;
+            let mut bytes = self.partial.clone();
+            self.offset += fh.read_to_end(&mut bytes)? as u64;
+            self.append_lossy(&bytes);
             Ok(self.buffer.clone())
         });
         self.sink.send(result)
+    }
+
+    /// Append `bytes` to the buffer with U+FFFD in place of anything that is
+    /// not UTF-8, so one bad byte in a log does not fail every read after it.
+    /// A character cut off at the end is held back rather than replaced.
+    fn append_lossy(&mut self, bytes: &[u8]) {
+        self.partial.clear();
+        let mut chunks = bytes.utf8_chunks().peekable();
+        while let Some(chunk) = chunks.next() {
+            self.buffer.push_str(chunk.valid());
+            let invalid = chunk.invalid();
+            if invalid.is_empty() {
+                continue;
+            }
+            let cut_off = chunks.peek().is_none()
+                && std::str::from_utf8(invalid).is_err_and(|e| e.error_len().is_none());
+            if cut_off {
+                self.partial.extend_from_slice(invalid);
+            } else {
+                self.buffer.push(char::REPLACEMENT_CHARACTER);
+            }
+        }
     }
 }
 
@@ -243,7 +272,7 @@ mod tests {
             TempLog(path)
         }
 
-        fn rewrite(&self, contents: &str) {
+        fn rewrite(&self, contents: impl AsRef<[u8]>) {
             fs::write(&self.0, contents).unwrap();
         }
     }
@@ -308,5 +337,40 @@ mod tests {
         log.rewrite("");
         reader.read_new_content().unwrap();
         assert_eq!(out.recv().unwrap().unwrap(), "");
+    }
+
+    #[test]
+    fn a_byte_that_is_not_utf8_is_replaced_and_reading_goes_on() {
+        let log = TempLog::with("hello\n");
+        let (mut reader, out) = reader_for(&log.0);
+
+        reader.read_new_content().unwrap();
+        assert_eq!(out.recv().unwrap().unwrap(), "hello\n");
+
+        log.rewrite(b"hello\n\xFF\nworld\n");
+        reader.read_new_content().unwrap();
+        assert_eq!(out.recv().unwrap().unwrap(), "hello\n\u{FFFD}\nworld\n");
+
+        log.rewrite(b"hello\n\xFF\nworld\nagain\n");
+        reader.read_new_content().unwrap();
+        assert_eq!(
+            out.recv().unwrap().unwrap(),
+            "hello\n\u{FFFD}\nworld\nagain\n"
+        );
+    }
+
+    #[test]
+    fn a_character_split_across_reads_is_kept_whole() {
+        let log = TempLog::with("");
+        let (mut reader, out) = reader_for(&log.0);
+
+        // "é" is 0xC3 0xA9; the first read ends between the two bytes.
+        log.rewrite(b"caf\xC3");
+        reader.read_new_content().unwrap();
+        assert_eq!(out.recv().unwrap().unwrap(), "caf");
+
+        log.rewrite("café\n");
+        reader.read_new_content().unwrap();
+        assert_eq!(out.recv().unwrap().unwrap(), "café\n");
     }
 }

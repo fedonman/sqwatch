@@ -23,6 +23,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The `Reason` column asks `squeue` for `%r` rather than the dual-purpose `%R`, which returns the allocated nodes for anything that is not pending or failed. It now says why a job is in its current state instead of repeating the `Node` column on every running row, sorting by it sorts by the reason, and a job with no reason shows the usual `-` instead of `None`.
 - Jobs in `COMPLETING` are shown as `COMPLETING` rather than `COMPLETED` and have their own state filter, so filtering for `COMPLETED` no longer hides rows the table had just labelled `COMPLETED`.
 - `--help` and `--version` print usage and the version instead of opening the UI, and any other argument is rejected with exit code 2 instead of being silently ignored.
+- A byte that is not valid UTF-8 in a log now shows as a `U+FFFD` replacement character instead of turning the pane into a read error for the rest of the session, and a character split across two reads is no longer mangled.
 
 ## [0.2.0] - 2026-08-28
 
