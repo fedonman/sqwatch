@@ -60,6 +60,8 @@ sqwatch
 
 The UI starts immediately. It detects your username from `$USER` and displays all jobs by default (with `--all --states=all` passed to `squeue`).
 
+`sqwatch --help` prints usage and `sqwatch --version` prints the version, both without starting the UI. Any other argument is rejected.
+
 ### Configuration
 
 Settings are stored in `~/.config/sqwatch/` (or `$XDG_CONFIG_HOME/sqwatch/`):

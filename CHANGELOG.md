@@ -22,6 +22,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - A failing `sinfo`, `sacctmgr` or `squeue` is reported instead of being read as a cluster that has no partitions, nodes or QoS. Startup now stops with the message `squeue` printed, and a probe that fails once the app is up says so in the flash bar rather than leaving the sidebar quietly empty.
 - The `Reason` column asks `squeue` for `%r` rather than the dual-purpose `%R`, which returns the allocated nodes for anything that is not pending or failed. It now says why a job is in its current state instead of repeating the `Node` column on every running row, sorting by it sorts by the reason, and a job with no reason shows the usual `-` instead of `None`.
 - Jobs in `COMPLETING` are shown as `COMPLETING` rather than `COMPLETED` and have their own state filter, so filtering for `COMPLETED` no longer hides rows the table had just labelled `COMPLETED`.
+- `--help` and `--version` print usage and the version instead of opening the UI, and any other argument is rejected with exit code 2 instead of being silently ignored.
 
 ## [0.2.0] - 2026-08-28
 
