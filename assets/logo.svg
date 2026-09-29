@@ -1,0 +1,93 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512" role="img" aria-label="sqwatch logo: a rat peering through binoculars over a terminal window">
+<title>sqwatch logo: a rat peering through binoculars over a terminal window</title>
+<rect width="512" height="512" rx="112" fill="#2a1f3d"/>
+<svg x="86" y="14" width="340" height="292" viewBox="0 0 400 344" overflow="hidden">
+<g stroke="#15111f" fill="none" stroke-width="7" stroke-linejoin="round" stroke-linecap="round">
+<path d="M 300 352 C 352 342, 386 306, 378 266 C 372 236, 344 230, 336 252" stroke-width="26"/>
+<path d="M 300 352 C 352 342, 386 306, 378 266 C 372 236, 344 230, 336 252" stroke="#f0a5c2" stroke-width="12"/>
+<ellipse cx="200" cy="374" rx="134" ry="88" fill="#a39cb8"/>
+<circle cx="100" cy="112" r="62" fill="#a39cb8"/>
+<circle cx="106" cy="118" r="38" fill="#f0a5c2" stroke="none"/>
+<circle cx="300" cy="112" r="62" fill="#a39cb8"/>
+<circle cx="294" cy="118" r="38" fill="#f0a5c2" stroke="none"/>
+<path d="M 200 88 C 274 88, 320 138, 316 198 C 313 246, 264 278, 234 300 C 220 311, 180 311, 166 300 C 136 278, 87 246, 84 198 C 80 138, 126 88, 200 88 Z" fill="#a39cb8"/>
+<path d="M 126 124 Q 146 108 168 118" stroke-width="6"/>
+<path d="M 274 124 Q 254 108 232 118" stroke-width="6"/>
+<rect x="189" y="306" width="22" height="20" rx="4" fill="#fffaf2" stroke-width="5"/>
+<path d="M 200 314 L 200 324" stroke-width="3.5"/>
+<path d="M 200 232 C 238 232, 256 258, 248 282 C 242 300, 224 314, 200 314 C 176 314, 158 300, 152 282 C 144 258, 162 232, 200 232 Z" fill="#cdc6de"/>
+<path d="M 200 300 L 200 306" stroke-width="4"/>
+<path d="M 188 305 Q 194 311 200 305 Q 206 311 212 305" stroke-width="4"/>
+<path d="M 182 284 C 188 277, 212 277, 218 284 C 221 293, 207 302, 200 302 C 193 302, 179 293, 182 284 Z" fill="#f472b6" stroke-width="5"/>
+<ellipse cx="193" cy="285" rx="5" ry="3" fill="#ffffff" stroke="none" opacity="0.85"/>
+<path d="M 98 356 C 90 322, 84 284, 98 232" stroke-width="48"/>
+<path d="M 98 356 C 90 322, 84 284, 98 232" stroke="#a39cb8" stroke-width="34"/>
+<path d="M 302 356 C 310 322, 316 284, 302 232" stroke-width="48"/>
+<path d="M 302 356 C 310 322, 316 284, 302 232" stroke="#a39cb8" stroke-width="34"/>
+<g stroke-width="3.5">
+<path d="M 156 270 L 108 258"/>
+<path d="M 153 281 L 102 282"/>
+<path d="M 156 292 L 108 304"/>
+<path d="M 244 270 L 292 258"/>
+<path d="M 247 281 L 298 282"/>
+<path d="M 244 292 L 292 304"/>
+</g>
+<rect x="184" y="130" width="32" height="20" rx="6" fill="#514870" stroke-width="5"/>
+<rect x="170" y="144" width="60" height="36" rx="12" fill="#3b3456"/>
+<g transform="translate(150 192)">
+<circle r="56" fill="#2d2742"/>
+<circle r="42" fill="#514870" stroke-width="5"/>
+<circle r="31" fill="#0d2b35" stroke-width="4"/>
+<rect x="-21" y="-8" width="38" height="7" rx="3.5" fill="#2dd4bf" stroke="none"/>
+<rect x="-21" y="3" width="24" height="6" rx="3" fill="#fbbf24" stroke="none"/>
+<rect x="-18" y="13" width="30" height="6" rx="3" fill="#2dd4bf" stroke="none" opacity="0.6"/>
+<path d="M -18.8 -13.2 A 23 23 0 0 1 -5.9 -22.2" stroke="#ffffff" stroke-width="5"/>
+<circle cx="13" cy="-17" r="3" fill="#ffffff" stroke="none"/>
+</g>
+<g transform="translate(250 192)">
+<circle r="56" fill="#2d2742"/>
+<circle r="42" fill="#514870" stroke-width="5"/>
+<circle r="31" fill="#0d2b35" stroke-width="4"/>
+<rect x="-21" y="-8" width="38" height="7" rx="3.5" fill="#2dd4bf" stroke="none"/>
+<rect x="-21" y="3" width="24" height="6" rx="3" fill="#fbbf24" stroke="none"/>
+<rect x="-18" y="13" width="30" height="6" rx="3" fill="#2dd4bf" stroke="none" opacity="0.6"/>
+<path d="M -18.8 -13.2 A 23 23 0 0 1 -5.9 -22.2" stroke="#ffffff" stroke-width="5"/>
+<circle cx="13" cy="-17" r="3" fill="#ffffff" stroke="none"/>
+</g>
+<ellipse cx="96" cy="206" rx="20" ry="26" fill="#f0a5c2"/>
+<ellipse cx="304" cy="206" rx="20" ry="26" fill="#f0a5c2"/>
+<g stroke-width="3.5">
+<path d="M 100 192 L 112 192"/>
+<path d="M 102 206 L 114 206"/>
+<path d="M 100 220 L 112 220"/>
+<path d="M 300 192 L 288 192"/>
+<path d="M 298 206 L 286 206"/>
+<path d="M 300 220 L 288 220"/>
+</g>
+</g>
+</svg>
+<defs><clipPath id="win"><rect x="50" y="306" width="412" height="152" rx="16"/></clipPath></defs>
+<rect x="44" y="300" width="424" height="164" rx="22" fill="#15111f"/>
+<rect x="50" y="306" width="412" height="152" rx="16" fill="#17131f"/>
+<g clip-path="url(#win)">
+<rect x="50" y="306" width="412" height="27" fill="#3a3354"/>
+<rect x="50" y="333" width="412" height="5" fill="#15111f"/>
+<circle cx="74.5" cy="319.5" r="6.5" fill="#f87171"/>
+<circle cx="96.5" cy="319.5" r="6.5" fill="#fbbf24"/>
+<circle cx="118.5" cy="319.5" r="6.5" fill="#34d399"/>
+<rect x="65.5" y="350.5" width="381" height="93" rx="4.5" fill="none" stroke="#c65fe0" stroke-width="3"/>
+<rect x="77" y="360" width="358" height="13" rx="3" fill="#2dd4bf"/>
+<rect x="83" y="364" width="34" height="5" rx="2.5" fill="#0f3d39"/>
+<rect x="125" y="364" width="140" height="5" rx="2.5" fill="#0f3d39"/>
+<rect x="369" y="364" width="60" height="5" rx="2.5" fill="#0f3d39"/>
+<rect x="83" y="383" width="34" height="7" rx="3.5" fill="#5d5775"/>
+<rect x="125" y="383" width="108" height="7" rx="3.5" fill="#2dd4bf"/>
+<rect x="369" y="383" width="60" height="7" rx="3.5" fill="#2dd4bf"/>
+<rect x="83" y="403" width="34" height="7" rx="3.5" fill="#5d5775"/>
+<rect x="125" y="403" width="160" height="7" rx="3.5" fill="#fbbf24"/>
+<rect x="369" y="403" width="60" height="7" rx="3.5" fill="#fbbf24"/>
+<rect x="83" y="423" width="34" height="7" rx="3.5" fill="#5d5775"/>
+<rect x="125" y="423" width="92" height="7" rx="3.5" fill="#f87171"/>
+<rect x="369" y="423" width="60" height="7" rx="3.5" fill="#f87171"/>
+</g>
+</svg>
