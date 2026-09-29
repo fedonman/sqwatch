@@ -97,9 +97,10 @@ impl OutputWidget {
     }
 
     /// Apply resolved job detail from the background resolver.
-    /// Idempotent. Returns immediately if the detail was already applied.
+    /// Idempotent. Returns immediately if the detail was already applied, or
+    /// if the pane has been cleared and so has no job to watch a log for.
     pub fn set_detail(&mut self, detail: &JobDetail) {
-        if self.detail_applied {
+        if self.detail_applied || self.job_id.is_none() {
             return;
         }
         self.detail_applied = true;
@@ -296,5 +297,59 @@ impl OutputWidget {
             (_, KeyCode::Char('f')) => self.follow = !self.follow,
             _ => {}
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::{fs, io::Write, thread, time::Instant};
+
+    fn wait_for_content(widget: &mut OutputWidget, want: &str) {
+        let deadline = Instant::now() + Duration::from_secs(5);
+        while widget.content != want && Instant::now() < deadline {
+            thread::sleep(Duration::from_millis(10));
+            widget.poll_updates();
+        }
+        assert_eq!(widget.content, want);
+    }
+
+    #[test]
+    fn a_cleared_pane_stops_watching_its_log() {
+        let path = std::env::temp_dir().join(format!("sqwatch-pane-{}.log", std::process::id()));
+        fs::write(&path, "before\n").unwrap();
+        let detail = JobDetail {
+            stdout_file: Some(path.to_string_lossy().into_owned()),
+            stderr_file: None,
+            command: None,
+            work_dir: None,
+        };
+
+        let mut widget = OutputWidget::new_for(StreamKind::Stdout);
+        widget.ensure_job("1");
+        widget.set_detail(&detail);
+        wait_for_content(&mut widget, "before\n");
+
+        // What the dashboard does to a hidden pane on every frame and tick.
+        widget.clear_job();
+        widget.set_detail(&detail);
+
+        let mut log = fs::OpenOptions::new().append(true).open(&path).unwrap();
+        log.write_all(b"after\n").unwrap();
+        thread::sleep(POLL_INTERVAL + Duration::from_millis(500));
+        let _ = fs::remove_file(&path);
+
+        let queued: Vec<String> = widget
+            .data_rx
+            .as_ref()
+            .unwrap()
+            .try_iter()
+            .filter_map(Result::ok)
+            .collect();
+        assert!(
+            queued.iter().all(|text| !text.contains("after")),
+            "the hidden pane still read the log: {:?}",
+            queued
+        );
     }
 }
