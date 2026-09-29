@@ -9,7 +9,7 @@ use ratatui::{
 use std::{path::PathBuf, time::Duration};
 
 use crate::backend::commands::JobDetail;
-use crate::core::live_file::{LiveFileMonitor, MonitorError};
+use crate::core::live_file::{LiveFileMonitor, LogChunk, MonitorError};
 use crate::views::theme::{ACCENT_STDERR, ACCENT_STDOUT, DIM_BORDER};
 use crate::views::wrap_index::WrapIndex;
 
@@ -48,7 +48,7 @@ pub struct OutputWidget {
     max_scroll: usize,
     wrap: WrapIndex,
     monitor: Option<LiveFileMonitor>,
-    data_rx: Option<Receiver<Result<String, MonitorError>>>,
+    data_rx: Option<Receiver<Result<LogChunk, MonitorError>>>,
     fstate: FileState,
     detail_applied: bool,
     /// When true, the view stays pinned to the tail as new content arrives.
@@ -149,11 +149,12 @@ impl OutputWidget {
 
         while let Ok(result) = rx.try_recv() {
             match result {
-                Ok(text) => {
-                    if text != self.content {
-                        self.wrap.text_changed(&self.content, &text);
-                        self.content = text;
-                    }
+                // Appending keeps every line already wrapped, so only a
+                // replacement has to be reported to the wrap index.
+                Ok(LogChunk::Append(text)) => self.content.push_str(&text),
+                Ok(LogChunk::Replace(text)) => {
+                    self.wrap.text_changed(&self.content, &text);
+                    self.content = text;
                 }
                 Err(e) => {
                     let message = format!("Error watching file: {}", e);
@@ -339,7 +340,7 @@ mod tests {
         thread::sleep(POLL_INTERVAL + Duration::from_millis(500));
         let _ = fs::remove_file(&path);
 
-        let queued: Vec<String> = widget
+        let queued: Vec<LogChunk> = widget
             .data_rx
             .as_ref()
             .unwrap()
@@ -347,7 +348,9 @@ mod tests {
             .filter_map(Result::ok)
             .collect();
         assert!(
-            queued.iter().all(|text| !text.contains("after")),
+            queued.iter().all(|chunk| match chunk {
+                LogChunk::Replace(text) | LogChunk::Append(text) => !text.contains("after"),
+            }),
             "the hidden pane still read the log: {:?}",
             queued
         );
