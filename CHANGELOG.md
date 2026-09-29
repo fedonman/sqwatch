@@ -32,6 +32,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - A log pane no longer copies the whole log across from its reader every second. The reader sends only what was appended since the last read and nothing when the file has not changed, and it no longer keeps its own copy of the log.
 - A failing `squeue` is retried at the refresh interval instead of on every input tick, which ran it several times a second against a controller that was already not answering and rewrote the error in the flash bar too fast to read.
 - The README keybinding tables match the keys that ship. They listed `w`, `c`, `a`, `x` and `r` for bindings that moved behind `Ctrl` in 0.1.1 and said `Ctrl+C` quits, which it does not. The help, refresh interval, follow mode, filter reset and custom widget keys are now listed, and the configuration table includes `settings.json`.
+- The script pane stops scrolling at the 65,535th row instead of wrapping back to near the top of a very long script.
 
 ## [0.2.0] - 2026-08-28
 

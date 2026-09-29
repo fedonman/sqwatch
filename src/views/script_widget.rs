@@ -109,8 +109,7 @@ impl ScriptWidget {
     }
 
     pub fn scroll_down(&mut self) {
-        let max = self.body.lines().count() * 2;
-        if self.scroll_pos < max {
+        if self.scroll_pos < self.max_scroll() {
             self.scroll_pos += 1;
         }
     }
@@ -120,8 +119,13 @@ impl ScriptWidget {
     }
 
     pub fn page_down(&mut self) {
-        let max = self.body.lines().count() * 2;
-        self.scroll_pos = (self.scroll_pos + 10).min(max);
+        self.scroll_pos = (self.scroll_pos + 10).min(self.max_scroll());
+    }
+
+    /// How far the pane scrolls. `Paragraph::scroll` takes a `u16`, so a long
+    /// script stops there instead of wrapping back to the top.
+    fn max_scroll(&self) -> usize {
+        (self.body.lines().count() * 2).min(u16::MAX.into())
     }
 
     pub fn ensure_job(&mut self, job_id: &str, job_name: &str) {
@@ -173,7 +177,7 @@ impl ScriptWidget {
         let widget = Paragraph::new(display)
             .block(block)
             .wrap(Wrap { trim: false })
-            .scroll((self.scroll_pos as u16, 0));
+            .scroll((u16::try_from(self.scroll_pos).unwrap_or(u16::MAX), 0));
 
         frame.render_widget(widget, area);
     }
@@ -336,4 +340,25 @@ fn detect_bat() -> bool {
                 .map(|o| o.status.success())
                 .unwrap_or(false)
         })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_long_script_stops_scrolling_where_the_pane_can_draw() {
+        let mut w = ScriptWidget::new();
+        w.body = "line\n".repeat(70_000);
+        let ceiling = usize::from(u16::MAX);
+
+        w.scroll_pos = ceiling - 5;
+        w.page_down();
+        assert_eq!(w.scroll_pos, ceiling);
+        w.scroll_down();
+        assert_eq!(w.scroll_pos, ceiling);
+
+        w.scroll_up();
+        assert_eq!(w.scroll_pos, ceiling - 1);
+    }
 }
