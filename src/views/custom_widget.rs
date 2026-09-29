@@ -12,6 +12,7 @@ use std::time::Duration;
 
 use crate::core::live_file::{LiveFileMonitor, MonitorError};
 use crate::views::theme::{ACCENT_CUSTOM, DIM_BORDER};
+use crate::views::wrap_index::WrapIndex;
 
 const POLL_INTERVAL: Duration = Duration::from_secs(1);
 
@@ -31,6 +32,7 @@ pub struct CustomOutputWidget {
     pub content: String,
     pub scroll_pos: usize,
     max_scroll: usize,
+    wrap: WrapIndex,
     monitor: Option<LiveFileMonitor>,
     data_rx: Option<Receiver<Result<String, MonitorError>>>,
     fstate: FileState,
@@ -50,6 +52,7 @@ impl CustomOutputWidget {
             content: String::new(),
             scroll_pos: 0,
             max_scroll: 0,
+            wrap: WrapIndex::default(),
             monitor: None,
             data_rx: None,
             fstate: FileState::Missing,
@@ -104,11 +107,16 @@ impl CustomOutputWidget {
         while let Ok(result) = rx.try_recv() {
             match result {
                 Ok(text) => {
-                    self.content = text;
-                    self.display_content = format_content(&self.content, &self.filename);
+                    if text != self.content {
+                        let display = format_content(&text, &self.filename);
+                        self.wrap.text_changed(&self.display_content, &display);
+                        self.content = text;
+                        self.display_content = display;
+                    }
                 }
                 Err(e) => {
                     self.content = format!("Error watching file: {}", e);
+                    self.wrap.text_changed(&self.display_content, &self.content);
                     self.display_content = self.content.clone();
                     self.fstate = FileState::Failed;
                 }
@@ -189,30 +197,42 @@ impl CustomOutputWidget {
             return;
         }
 
-        let display_text = match self.fstate {
-            FileState::Missing => {
-                format!("File '{}' not found in job work directory", self.filename)
-            }
+        let placeholder = match self.fstate {
+            FileState::Missing => Some(format!(
+                "File '{}' not found in job work directory",
+                self.filename
+            )),
             _ if self.content.is_empty() => {
-                format!("Waiting for content from '{}'...", self.filename)
+                Some(format!("Waiting for content from '{}'...", self.filename))
             }
-            _ => self.display_content.clone(),
+            _ => None,
         };
 
-        let para = Paragraph::new(display_text)
-            .style(Style::default().fg(Color::Rgb(200, 200, 210)))
-            .block(block)
-            .wrap(Wrap { trim: false });
+        let para = if let Some(text) = placeholder {
+            self.max_scroll = 0;
+            Paragraph::new(text)
+        } else {
+            let inner_width = area.width.saturating_sub(2);
+            let inner_height = area.height.saturating_sub(2) as usize;
+            self.max_scroll = self
+                .wrap
+                .rows(&self.display_content, inner_width)
+                .saturating_sub(inner_height);
+            if self.follow {
+                self.scroll_pos = self.max_scroll;
+            }
+            let (visible, skip) =
+                self.wrap
+                    .window(&self.display_content, self.scroll_pos, inner_height);
+            Paragraph::new(visible).scroll((skip, 0))
+        };
 
-        let inner_width = area.width.saturating_sub(2);
-        let inner_height = area.height.saturating_sub(2) as usize;
-        let total_lines = para.line_count(inner_width);
-        self.max_scroll = total_lines.saturating_sub(inner_height);
-        if self.follow {
-            self.scroll_pos = self.max_scroll;
-        }
-
-        frame.render_widget(para.scroll((self.scroll_pos as u16, 0)), area);
+        frame.render_widget(
+            para.style(Style::default().fg(Color::Rgb(200, 200, 210)))
+                .block(block)
+                .wrap(Wrap { trim: false }),
+            area,
+        );
     }
 
     pub fn handle_key(&mut self, key: KeyEvent) {

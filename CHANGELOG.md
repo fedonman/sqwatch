@@ -25,6 +25,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `--help` and `--version` print usage and the version instead of opening the UI, and any other argument is rejected with exit code 2 instead of being silently ignored.
 - A byte that is not valid UTF-8 in a log now shows as a `U+FFFD` replacement character instead of turning the pane into a read error for the rest of the session, and a character split across two reads is no longer mangled.
 - The published crate includes the test fixtures, so `cargo test` compiles and passes on it and not only in a git checkout. CI now runs the tests on the packaged crate too.
+- Log panes draw only the lines on screen instead of word-wrapping the whole log twice on every frame, so scrolling and typing no longer slow down as a log grows. The full wrap runs once when a log is opened or the pane is resized, and only new lines are wrapped as the log grows. Follow mode also no longer leaves two blank rows under the last line.
 
 ## [0.2.0] - 2026-08-28
 

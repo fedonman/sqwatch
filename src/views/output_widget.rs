@@ -11,6 +11,7 @@ use std::{path::PathBuf, time::Duration};
 use crate::backend::commands::JobDetail;
 use crate::core::live_file::{LiveFileMonitor, MonitorError};
 use crate::views::theme::{ACCENT_STDERR, ACCENT_STDOUT, DIM_BORDER};
+use crate::views::wrap_index::WrapIndex;
 
 const POLL_INTERVAL: Duration = Duration::from_secs(1);
 
@@ -45,6 +46,7 @@ pub struct OutputWidget {
     pub stdout_file: Option<String>,
     pub stderr_file: Option<String>,
     max_scroll: usize,
+    wrap: WrapIndex,
     monitor: Option<LiveFileMonitor>,
     data_rx: Option<Receiver<Result<String, MonitorError>>>,
     fstate: FileState,
@@ -63,6 +65,7 @@ impl OutputWidget {
             stdout_file: None,
             stderr_file: None,
             max_scroll: 0,
+            wrap: WrapIndex::default(),
             monitor: None,
             data_rx: None,
             fstate: FileState::Missing,
@@ -145,9 +148,16 @@ impl OutputWidget {
 
         while let Ok(result) = rx.try_recv() {
             match result {
-                Ok(text) => self.content = text,
+                Ok(text) => {
+                    if text != self.content {
+                        self.wrap.text_changed(&self.content, &text);
+                        self.content = text;
+                    }
+                }
                 Err(e) => {
-                    self.content = format!("Error watching file: {}", e);
+                    let message = format!("Error watching file: {}", e);
+                    self.wrap.text_changed(&self.content, &message);
+                    self.content = message;
                     self.fstate = FileState::Failed;
                 }
             }
@@ -226,37 +236,48 @@ impl OutputWidget {
             return;
         }
 
-        let display_text = match self.fstate {
-            FileState::Loading => format!(
+        let placeholder = match self.fstate {
+            FileState::Loading => Some(format!(
                 "Loading {} details for job {}...",
                 self.stream.label(),
                 self.job_id.as_deref().unwrap_or("unknown")
-            ),
-            FileState::Missing => format!(
+            )),
+            FileState::Missing => Some(format!(
                 "No {} log file found for job {}",
                 self.stream.label(),
                 self.job_id.as_deref().unwrap_or("unknown")
-            ),
+            )),
             _ if self.content.is_empty() => {
-                format!("Waiting for {} content...", self.stream.label())
+                Some(format!("Waiting for {} content...", self.stream.label()))
             }
-            _ => self.content.clone(),
+            _ => None,
         };
 
-        let para = Paragraph::new(display_text)
-            .style(Style::default().fg(Color::Rgb(200, 200, 210)))
-            .block(block)
-            .wrap(Wrap { trim: false });
+        let para = if let Some(text) = placeholder {
+            self.max_scroll = 0;
+            Paragraph::new(text)
+        } else {
+            let inner_width = area.width.saturating_sub(2);
+            let inner_height = area.height.saturating_sub(2) as usize;
+            self.max_scroll = self
+                .wrap
+                .rows(&self.content, inner_width)
+                .saturating_sub(inner_height);
+            if self.follow {
+                self.scroll_pos = self.max_scroll;
+            }
+            let (visible, skip) = self
+                .wrap
+                .window(&self.content, self.scroll_pos, inner_height);
+            Paragraph::new(visible).scroll((skip, 0))
+        };
 
-        let inner_width = area.width.saturating_sub(2);
-        let inner_height = area.height.saturating_sub(2) as usize;
-        let total_lines = para.line_count(inner_width);
-        self.max_scroll = total_lines.saturating_sub(inner_height);
-        if self.follow {
-            self.scroll_pos = self.max_scroll;
-        }
-
-        frame.render_widget(para.scroll((self.scroll_pos as u16, 0)), area);
+        frame.render_widget(
+            para.style(Style::default().fg(Color::Rgb(200, 200, 210)))
+                .block(block)
+                .wrap(Wrap { trim: false }),
+            area,
+        );
     }
 
     pub fn handle_key(&mut self, key: KeyEvent) {

@@ -7,3 +7,4 @@ pub mod output_widget;
 pub mod script_widget;
 pub mod theme;
 pub mod widget_selector;
+pub mod wrap_index;
