@@ -10,7 +10,7 @@ use serde_json::Value as JsonValue;
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 
-use crate::core::live_file::{LiveFileMonitor, MonitorError};
+use crate::core::live_file::{LiveFileMonitor, LogChunk, MonitorError};
 use crate::views::theme::{ACCENT_CUSTOM, DIM_BORDER};
 use crate::views::wrap_index::WrapIndex;
 
@@ -34,7 +34,7 @@ pub struct CustomOutputWidget {
     max_scroll: usize,
     wrap: WrapIndex,
     monitor: Option<LiveFileMonitor>,
-    data_rx: Option<Receiver<Result<String, MonitorError>>>,
+    data_rx: Option<Receiver<Result<LogChunk, MonitorError>>>,
     fstate: FileState,
     display_content: String,
     /// When true, the view stays pinned to the tail as new content arrives.
@@ -106,13 +106,11 @@ impl CustomOutputWidget {
 
         while let Ok(result) = rx.try_recv() {
             match result {
-                Ok(text) => {
-                    if text != self.content {
-                        let display = format_content(&text, &self.filename);
-                        self.wrap.text_changed(&self.display_content, &display);
-                        self.content = text;
-                        self.display_content = display;
-                    }
+                Ok(chunk) => {
+                    chunk.apply_to(&mut self.content);
+                    let display = format_content(&self.content, &self.filename);
+                    self.wrap.text_changed(&self.display_content, &display);
+                    self.display_content = display;
                 }
                 Err(e) => {
                     self.content = format!("Error watching file: {}", e);
