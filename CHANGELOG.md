@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - A logo, a README banner and a social preview image, kept as SVG and PNG under `assets/`. The crate's docs.rs pages show the logo in the sidebar and use it as the favicon.
+- The titlebar shows the mascot's head next to the name, drawn in half blocks in the logo's colours so it works in any truecolor terminal, over SSH and inside tmux.
 
 ### Fixed
 

@@ -150,24 +150,85 @@ pub fn build_frame(frame: &mut Frame, widgets: &VisibleWidgets) -> FrameLayout {
     }
 }
 
+/// The mascot's head from `assets/logo.svg`, one character per pixel. Each
+/// titlebar row draws two pixel rows with half blocks.
+const LOGO: [&str; 6] = [
+    ".ff......ff.",
+    "fppffffffppf",
+    ".kkkffffkkk.",
+    ".ktkkkkkktk.",
+    ".kkkfmmfkkk.",
+    "...fmnnmf...",
+];
+const LOGO_WIDTH: u16 = 12;
+
+/// The logo colour for a pixel, or `None` where the bar shows through.
+fn logo_color(pixel: u8) -> Option<Color> {
+    match pixel {
+        b'f' => Some(Color::Rgb(163, 156, 184)), // fur
+        b'p' => Some(Color::Rgb(240, 165, 194)), // inner ear
+        b'k' => Some(Color::Rgb(93, 87, 117)),   // binoculars
+        b't' => Some(Color::Rgb(45, 212, 191)),  // lenses
+        b'm' => Some(Color::Rgb(205, 198, 222)), // muzzle
+        b'n' => Some(Color::Rgb(244, 114, 182)), // nose
+        _ => None,
+    }
+}
+
+/// One cell holding two logo pixels, the top one as the foreground of an
+/// upper half block and the bottom one as its background.
+fn logo_cell(top: u8, bottom: u8) -> Span<'static> {
+    match (logo_color(top), logo_color(bottom)) {
+        (None, None) => Span::styled(" ", Style::default().bg(BAR_BG)),
+        (None, Some(bottom)) => Span::styled("\u{2584}", Style::default().fg(bottom).bg(BAR_BG)),
+        (Some(top), bottom) => Span::styled(
+            "\u{2580}",
+            Style::default().fg(top).bg(bottom.unwrap_or(BAR_BG)),
+        ),
+    }
+}
+
+fn logo_lines() -> Vec<Line<'static>> {
+    LOGO.chunks(2)
+        .map(|pair| {
+            pair[0]
+                .bytes()
+                .zip(pair[1].bytes())
+                .map(|(top, bottom)| logo_cell(top, bottom))
+                .collect()
+        })
+        .collect()
+}
+
 pub fn render_titlebar(frame: &mut Frame, area: Rect, username: &str, flash: Option<&str>) {
     let bar_style = Style::default().bg(BAR_BG);
 
     // Fill background
     frame.render_widget(Block::default().style(bar_style), area);
 
-    // Vertically center content on the middle row
+    // Logo over the full bar height
+    let logo_area = Rect {
+        x: area.x + 2,
+        y: area.y,
+        width: LOGO_WIDTH,
+        height: area.height,
+    }
+    .intersection(area);
+    frame.render_widget(Paragraph::new(logo_lines()), logo_area);
+
+    // Vertically center the text on the middle row, beside the logo
     let mid_y = area.y + area.height / 2;
+    let text_x = logo_area.right() + 1;
     let row = Rect {
-        x: area.x,
+        x: text_x,
         y: mid_y,
-        width: area.width,
+        width: area.right().saturating_sub(text_x),
         height: 1,
     };
 
     // Left side: brand + optional flash
     let mut left_spans = vec![
-        Span::styled("  sqwatch ", Style::default().fg(ACCENT).bg(BAR_BG).bold()),
+        Span::styled("sqwatch ", Style::default().fg(ACCENT).bg(BAR_BG).bold()),
         Span::styled(
             "- SLURM Queue Watcher ",
             Style::default().fg(Color::Rgb(170, 170, 190)).bg(BAR_BG),
@@ -317,4 +378,59 @@ pub fn popup_rect(parent: Rect, pct_w: u16, pct_h: u16) -> Rect {
             Constraint::Percentage((100 - pct_w) / 2),
         ])
         .split(vert[1])[1]
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use ratatui::{Terminal, backend::TestBackend, buffer::Buffer};
+
+    fn titlebar(width: u16, height: u16) -> Buffer {
+        let mut terminal = Terminal::new(TestBackend::new(width, height)).unwrap();
+        terminal
+            .draw(|f| render_titlebar(f, f.area(), "alice", None))
+            .unwrap();
+        terminal.backend().buffer().clone()
+    }
+
+    fn row(buf: &Buffer, y: u16) -> String {
+        (0..buf.area.width).map(|x| buf[(x, y)].symbol()).collect()
+    }
+
+    #[test]
+    fn every_logo_row_is_logo_width_pixels() {
+        for line in LOGO {
+            assert_eq!(line.len(), LOGO_WIDTH as usize, "{:?}", line);
+        }
+    }
+
+    #[test]
+    fn the_logo_fills_the_bar_and_the_name_follows_it() {
+        let buf = titlebar(60, 3);
+        assert!(
+            row(&buf, 0).starts_with("  ▄▀▀▄▄▄▄▄▄▀▀▄ "),
+            "{:?}",
+            row(&buf, 0)
+        );
+        assert!(
+            row(&buf, 1).starts_with("   ▀▀▀▀▀▀▀▀▀▀  sqwatch - SLURM Queue Watcher"),
+            "{:?}",
+            row(&buf, 1)
+        );
+        assert!(row(&buf, 1).ends_with("  alice  "), "{:?}", row(&buf, 1));
+        assert!(
+            row(&buf, 2).starts_with("   ▀▀▀▀▀▀▀▀▀▀  "),
+            "{:?}",
+            row(&buf, 2)
+        );
+    }
+
+    #[test]
+    fn a_narrow_or_short_bar_clips_the_logo() {
+        for width in 1..20 {
+            for height in 1..=3 {
+                titlebar(width, height);
+            }
+        }
+    }
 }
