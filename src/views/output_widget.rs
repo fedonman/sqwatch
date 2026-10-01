@@ -304,6 +304,7 @@ impl OutputWidget {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use ratatui::{Terminal, backend::TestBackend};
     use std::{fs, io::Write, thread, time::Instant};
 
     fn wait_for_content(widget: &mut OutputWidget, want: &str) {
@@ -354,5 +355,25 @@ mod tests {
             "the hidden pane still read the log: {:?}",
             queued
         );
+    }
+
+    #[test]
+    fn follow_keeps_the_tail_past_the_u16_scroll_limit() {
+        let mut w = OutputWidget::new_for(StreamKind::Stdout);
+        w.job_id = Some("1".into());
+        w.fstate = FileState::Pending;
+        w.content = (1..=70_000)
+            .map(|i| format!("line {:06}", i))
+            .collect::<Vec<_>>()
+            .join("\n");
+
+        let mut terminal = Terminal::new(TestBackend::new(40, 10)).unwrap();
+        terminal
+            .draw(|f| w.render_inline(f, f.area(), true))
+            .unwrap();
+
+        let buffer = terminal.backend().buffer();
+        let last_row: String = (1..39).map(|x| buffer[(x, 8)].symbol()).collect();
+        assert_eq!(last_row.trim_end(), "line 070000");
     }
 }
