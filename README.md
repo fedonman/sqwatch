@@ -68,13 +68,16 @@ Settings are stored in `~/.config/sqwatch/` (or `$XDG_CONFIG_HOME/sqwatch/`):
 
 | File | Contents |
 |------|----------|
-| `filters.json` | Saved filter presets (user, states, partitions, QoS, nodes, name pattern) |
+| `filters.json` | The saved filter set (user, states, partitions, QoS, nodes, name pattern) |
 | `columns.json` | Visible columns and sort order |
 | `layout.json` | Widget visibility and custom widget definitions |
+| `settings.json` | Auto-refresh interval in seconds (`refresh_secs`) |
 
-Press `Ctrl+S` inside the filter sidebar, column dialog, or widget selector to persist the current configuration.
+Press `Ctrl+S` inside the filter sidebar, column dialog, or widget selector to persist the current configuration. The refresh interval is saved as soon as you change it.
 
 ## Keybindings
+
+Press `?` in the app for a short summary. `Esc` on the job table is the only way to quit: there is no `q`, and `Ctrl+C` does not quit.
 
 ### Global
 
@@ -82,10 +85,10 @@ Press `Ctrl+S` inside the filter sidebar, column dialog, or widget selector to p
 |-----|--------|
 | `Tab` | Cycle focus to next visible widget |
 | `Shift+Tab` | Cycle focus to previous visible widget |
-| `w` | Open widget selector (toggle panel visibility) |
-| `c` | Open column / sort configuration (when table is focused) |
+| `Ctrl+W` | Open widget selector (toggle panel visibility) |
+| `+` / `-` | Lengthen or shorten the auto-refresh interval by one second (1 to 60 s) |
+| `?` | Show the keybinding help; any key closes it |
 | `Esc` | Return focus to table, or quit if already on table |
-| `Ctrl+C` | Copy focused widget contents to clipboard, or quit if on table |
 
 ### Job Table
 
@@ -93,17 +96,21 @@ Press `Ctrl+S` inside the filter sidebar, column dialog, or widget selector to p
 |-----|--------|
 | `Up` / `Down` | Navigate job list |
 | `Space` | Toggle selection on focused job |
-| `a` | Select / deselect all |
-| `x` | Cancel selected jobs (with confirmation) |
+| `Ctrl+A` | Select / deselect all |
+| `Ctrl+X` | Cancel selected jobs (`y` confirms, `n` or `Esc` backs out) |
+| `Ctrl+C` | Open column / sort configuration (also from the filter sidebar) |
 
 ### Script / Log / Custom Widgets
 
 | Key | Action |
 |-----|--------|
 | `Up` / `Down` | Scroll content |
-| `PageUp` / `PageDown` | Scroll one page |
-| `Ctrl+U` / `Ctrl+D` | Scroll one page (vim-style) |
+| `PageUp` / `PageDown` | Scroll ten lines |
+| `Ctrl+U` / `Ctrl+D` | Scroll ten lines (vim-style) |
 | `Shift+Up` / `Shift+Down` | Switch to previous/next job in the table |
+| `Ctrl+C` | Copy the widget's contents to the clipboard |
+| `f` | Toggle follow mode, which keeps the view on the end of the file (log and custom widgets) |
+| `End` / `Home` | Jump to the end and follow, or to the top and stop following (log and custom widgets) |
 
 ### Filter Sidebar
 
@@ -112,6 +119,8 @@ Press `Ctrl+S` inside the filter sidebar, column dialog, or widget selector to p
 | `Up` / `Down` | Navigate between fields and filter sections |
 | `Enter` | Edit text field or toggle checkbox |
 | `Space` | Toggle checkbox item |
+| `Enter` / `Esc` (while editing) | Apply the pattern, or discard the edit |
+| `Ctrl+R` | Clear all filters |
 | `Ctrl+S` | Save filter settings to disk |
 
 ### Column / Sort Configuration
@@ -124,7 +133,7 @@ Press `Ctrl+S` inside the filter sidebar, column dialog, or widget selector to p
 | `Del` | Remove field from list |
 | `Shift+Up` / `Shift+Down` | Reorder items |
 | `Tab` | Cycle between lists |
-| `r` | Reset to defaults |
+| `Ctrl+R` | Reset to defaults |
 | `Ctrl+S` | Save column settings to disk |
 | `Esc` | Close |
 
@@ -134,6 +143,8 @@ Press `Ctrl+S` inside the filter sidebar, column dialog, or widget selector to p
 |-----|--------|
 | `Up` / `Down` | Navigate widget list |
 | `Enter` / `Space` | Toggle widget visibility |
+| `Ctrl+A` | Add a custom widget: enter a title, then a file name in the job's working directory (`Esc` cancels) |
+| `Ctrl+D` / `Del` | Delete the selected custom widget |
 | `Ctrl+S` | Save layout to disk |
 | `Esc` | Close |
 

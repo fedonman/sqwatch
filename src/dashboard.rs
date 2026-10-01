@@ -1313,4 +1313,27 @@ mod tests {
         assert_eq!(jobs.len(), 1);
         assert_eq!(jobs[0].user, "alice");
     }
+
+    #[test]
+    fn every_key_in_the_help_overlay_is_in_the_readme() {
+        let readme = include_str!("../README.md");
+        for line in help_lines() {
+            let [key, _] = line.spans.as_slice() else {
+                continue;
+            };
+            for k in key.content.split(['/', ' ']).filter(|k| !k.is_empty()) {
+                // The overlay abbreviates to fit its key column.
+                let k = match k {
+                    "Dn" => "Down",
+                    "PgUp" => "PageUp",
+                    "PgDn" => "PageDown",
+                    k => k,
+                };
+                assert!(
+                    readme.contains(&format!("`{k}`")),
+                    "README.md does not mention `{k}` from the help overlay"
+                );
+            }
+        }
+    }
 }
