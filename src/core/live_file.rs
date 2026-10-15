@@ -59,7 +59,7 @@ pub struct LiveFileMonitor {
 struct FileObserver {
     output: Sender<StreamResult>,
     inbox: Receiver<MonitorMsg>,
-    channel_back: Sender<MonitorMsg>,
+    pending_path: Option<PathBuf>,
     watched: Option<PathBuf>,
     poll_interval: Duration,
 }
@@ -82,13 +82,12 @@ impl FileObserver {
     fn create(
         output: Sender<StreamResult>,
         inbox: Receiver<MonitorMsg>,
-        channel_back: Sender<MonitorMsg>,
         poll_interval: Duration,
     ) -> Self {
         FileObserver {
             output,
             inbox,
-            channel_back,
+            pending_path: None,
             watched: None,
             poll_interval,
         }
@@ -121,6 +120,7 @@ impl FileObserver {
                 recv(self.inbox) -> msg => {
                     match msg? {
                         MonitorMsg::WatchPath(new_path) => {
+                            self.pending_path = None;
                             (content_tx, content_rx) = unbounded();
                             (notify_tx, notify_rx) = unbounded::<()>();
 
@@ -144,18 +144,7 @@ impl FileObserver {
                                     Err(_) if !p.exists() => {
                                         // File doesn't exist yet (e.g. pending job).
                                         // Poll until it appears, then set up the watch.
-                                        let interval = self.poll_interval;
-                                        let inbox_tx = self.channel_back.clone();
-                                        thread::spawn(move || {
-                                            loop {
-                                                thread::sleep(interval);
-                                                if p.exists() {
-                                                    let _ = inbox_tx
-                                                        .send(MonitorMsg::WatchPath(Some(p)));
-                                                    break;
-                                                }
-                                            }
-                                        });
+                                        self.pending_path = Some(p);
                                     }
                                     Err(e) => {
                                         let _ = self.output.send(Err(MonitorError::Watcher(e)));
@@ -163,6 +152,25 @@ impl FileObserver {
                                 }
                             } else {
                                 let _ = content_tx.send(Ok(LogChunk::Replace(String::new())));
+                            }
+                        }
+                    }
+                }
+                default(self.poll_interval) => {
+                    if let Some(p) = self.pending_path.take() {
+                        match watcher.watch(&p, RecursiveMode::NonRecursive) {
+                            Ok(_) => {
+                                self.watched = Some(p.clone());
+                                let tx = content_tx.clone();
+                                let rx = notify_rx.clone();
+                                let interval = self.poll_interval;
+                                thread::spawn(move || {
+                                    IncrementalReader::create(tx, rx, p, interval).read_loop()
+                                });
+                            }
+                            Err(_) if !p.exists() => self.pending_path = Some(p),
+                            Err(e) => {
+                                let _ = self.output.send(Err(MonitorError::Watcher(e)));
                             }
                         }
                     }
@@ -272,7 +280,7 @@ impl IncrementalReader {
 impl LiveFileMonitor {
     pub fn new(output: Sender<StreamResult>, poll_interval: Duration) -> Self {
         let (tx, rx) = unbounded();
-        let mut observer = FileObserver::create(output, rx, tx.clone(), poll_interval);
+        let mut observer = FileObserver::create(output, rx, poll_interval);
         thread::spawn(move || observer.event_loop());
 
         Self {
@@ -448,5 +456,82 @@ mod tests {
         log.rewrite("café\n");
         reader.read_new_content().unwrap();
         assert_eq!(out.recv().unwrap().unwrap(), append("é\n"));
+    }
+    #[test]
+    fn late_file_cannot_replace_a_new_selection() {
+        let pending = TempLog::with("obsolete");
+        fs::remove_file(&pending.0).unwrap();
+        let selected = TempLog::with("selected job\n");
+        let (sink, out) = unbounded();
+        let mut monitor = LiveFileMonitor::new(sink, Duration::from_millis(10));
+        monitor.set_file_path(Some(pending.0.clone()));
+        thread::sleep(Duration::from_millis(50));
+        monitor.set_file_path(Some(selected.0.clone()));
+        assert_eq!(
+            out.recv_timeout(Duration::from_secs(2))
+                .unwrap()
+                .ok()
+                .unwrap(),
+            replace("selected job\n")
+        );
+        pending.rewrite("obsolete job\n");
+        assert!(matches!(
+            out.recv_timeout(Duration::from_millis(150)),
+            Err(crossbeam::channel::RecvTimeoutError::Timeout)
+        ));
+    }
+
+    #[test]
+    fn late_file_cannot_restart_a_cleared_pane() {
+        let pending = TempLog::with("obsolete");
+        fs::remove_file(&pending.0).unwrap();
+        let (sink, out) = unbounded();
+        let mut monitor = LiveFileMonitor::new(sink, Duration::from_millis(10));
+        monitor.set_file_path(Some(pending.0.clone()));
+        thread::sleep(Duration::from_millis(50));
+        monitor.set_file_path(None);
+        assert_eq!(
+            out.recv_timeout(Duration::from_secs(2))
+                .unwrap()
+                .ok()
+                .unwrap(),
+            replace("")
+        );
+        pending.rewrite("obsolete job\n");
+        assert!(matches!(
+            out.recv_timeout(Duration::from_millis(150)),
+            Err(crossbeam::channel::RecvTimeoutError::Timeout)
+        ));
+    }
+    #[test]
+    fn dropping_a_monitor_stops_waiting_for_a_missing_file() {
+        let pending = TempLog::with("obsolete");
+        fs::remove_file(&pending.0).unwrap();
+        let (sink, out) = unbounded();
+        let mut monitor = LiveFileMonitor::new(sink, Duration::from_millis(10));
+        monitor.set_file_path(Some(pending.0.clone()));
+        thread::sleep(Duration::from_millis(50));
+        drop(monitor);
+        assert!(matches!(
+            out.recv_timeout(Duration::from_secs(2)),
+            Err(crossbeam::channel::RecvTimeoutError::Disconnected)
+        ));
+    }
+    #[test]
+    fn a_selected_missing_file_is_read_when_it_appears() {
+        let pending = TempLog::with("pending");
+        fs::remove_file(&pending.0).unwrap();
+        let (sink, out) = unbounded();
+        let mut monitor = LiveFileMonitor::new(sink, Duration::from_millis(10));
+        monitor.set_file_path(Some(pending.0.clone()));
+        assert!(out.recv_timeout(Duration::from_millis(50)).is_err());
+        pending.rewrite("started job\n");
+        assert_eq!(
+            out.recv_timeout(Duration::from_secs(2))
+                .unwrap()
+                .ok()
+                .unwrap(),
+            replace("started job\n")
+        );
     }
 }

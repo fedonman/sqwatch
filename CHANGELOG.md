@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- A log file that appears after switching jobs or hiding its pane no longer restarts an obsolete watch and replaces the selected job's output. Waiting for a missing file now belongs to the current monitor and stops when that monitor is dropped.
+
 ## [0.3.0] - 2026-10-01
 
 ### Added
